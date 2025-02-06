@@ -426,6 +426,49 @@ async def analyze_portfolio(request: Portfolio):
             }
         }
         
+        # Add AI insights
+        try:
+            ai_advisor = AIAdvisorService()
+            portfolio_data = {
+                "weights": cleaned_weights,
+                "historical_data": {
+                    "returns": returns.to_dict(),
+                    "dates": dates
+                },
+                "metrics": response["metrics"],
+                "market_comparison": response["market_comparison"]
+            }
+            
+            ai_insights = await ai_advisor.get_portfolio_metrics(portfolio_data)
+            response["ai_insights"] = ai_insights
+        except Exception as ai_error:
+            print(f"Error getting AI insights: {str(ai_error)}")
+            # Provide default AI insights if there's an error
+            response["ai_insights"] = {
+                "explanations": {
+                    "summary": {
+                        "en": "Portfolio analysis completed successfully. Consider reviewing the metrics for detailed insights.",
+                        "es": "Análisis de portafolio completado con éxito. Considere revisar las métricas para obtener información detallada."
+                    },
+                    "risk_analysis": {
+                        "en": "Risk metrics indicate the portfolio's current risk profile.",
+                        "es": "Las métricas de riesgo indican el perfil de riesgo actual del portafolio."
+                    },
+                    "diversification_analysis": {
+                        "en": "Review asset allocation for optimal diversification.",
+                        "es": "Revise la asignación de activos para una diversificación óptima."
+                    },
+                    "market_context": {
+                        "en": "Consider current market conditions when making investment decisions.",
+                        "es": "Considere las condiciones actuales del mercado al tomar decisiones de inversión."
+                    },
+                    "stress_test_interpretation": {
+                        "en": "Evaluate portfolio resilience under various market scenarios.",
+                        "es": "Evalúe la resiliencia del portafolio bajo varios escenarios de mercado."
+                    }
+                }
+            }
+        
         # Clean all numeric values before returning
         return clean_numeric_values(response)
         

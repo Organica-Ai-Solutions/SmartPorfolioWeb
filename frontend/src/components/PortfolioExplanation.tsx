@@ -17,17 +17,52 @@ interface PortfolioExplanationProps {
 
 export function PortfolioExplanation({ analysis }: PortfolioExplanationProps) {
   const explanations = analysis.ai_insights?.explanations;
+  const metrics = analysis.metrics;
 
   // Return null if no AI insights are available
   if (!analysis.ai_insights || !explanations) return null;
 
-  // Ensure all required sections exist
+  // Format metrics for display
+  const formatMetric = (value: number, isPercentage = true) => {
+    return isPercentage ? `${(value * 100).toFixed(2)}%` : value.toFixed(2);
+  };
+
+  // Generate summary based on actual metrics
+  const generateSummary = () => {
+    const riskLevel = metrics.volatility > 0.3 ? "high" : metrics.volatility > 0.15 ? "moderate" : "low";
+    const performanceLevel = metrics.sharpe_ratio > 1.5 ? "strong" : metrics.sharpe_ratio > 1 ? "good" : "poor";
+    const diversificationLevel = analysis.allocations && Object.keys(analysis.allocations).length > 5 ? "well" : "poorly";
+    
+    return {
+      en: `Your portfolio shows ${riskLevel} risk with ${performanceLevel} risk-adjusted returns (Sharpe ratio: ${metrics.sharpe_ratio.toFixed(2)}). It is ${diversificationLevel} diversified across ${Object.keys(analysis.allocations || {}).length} assets. The expected annual return is ${formatMetric(metrics.expected_return)} with ${formatMetric(metrics.volatility)} volatility.`,
+      es: `Su portafolio muestra un riesgo ${riskLevel === 'high' ? 'alto' : riskLevel === 'moderate' ? 'moderado' : 'bajo'} con rendimientos ajustados por riesgo ${performanceLevel === 'strong' ? 'fuertes' : performanceLevel === 'good' ? 'buenos' : 'pobres'} (Ratio de Sharpe: ${metrics.sharpe_ratio.toFixed(2)}). Está ${diversificationLevel === 'well' ? 'bien' : 'pobremente'} diversificado entre ${Object.keys(analysis.allocations || {}).length} activos. El retorno anual esperado es ${formatMetric(metrics.expected_return)} con una volatilidad del ${formatMetric(metrics.volatility)}.`
+    };
+  };
+
+  // Generate risk analysis based on actual metrics
+  const generateRiskAnalysis = () => {
+    return {
+      en: `The portfolio has a Sharpe ratio of ${metrics.sharpe_ratio.toFixed(2)} and a Sortino ratio of ${metrics.sortino_ratio.toFixed(2)}, indicating ${metrics.sharpe_ratio > 1 ? 'good' : 'suboptimal'} risk-adjusted returns. Maximum drawdown is ${formatMetric(metrics.max_drawdown)}, with a market beta of ${metrics.beta.toFixed(2)}. Value at Risk (95%) suggests a maximum daily loss of ${formatMetric(metrics.var_95)} under normal market conditions.`,
+      es: `El portafolio tiene un ratio de Sharpe de ${metrics.sharpe_ratio.toFixed(2)} y un ratio de Sortino de ${metrics.sortino_ratio.toFixed(2)}, indicando rendimientos ajustados por riesgo ${metrics.sharpe_ratio > 1 ? 'buenos' : 'subóptimos'}. La máxima caída es del ${formatMetric(metrics.max_drawdown)}, con un beta de mercado de ${metrics.beta.toFixed(2)}. El Valor en Riesgo (95%) sugiere una pérdida diaria máxima del ${formatMetric(metrics.var_95)} en condiciones normales de mercado.`
+    };
+  };
+
+  // Ensure all required sections exist with actual data
   const sections = {
-    summary: explanations.summary || { en: 'No summary available.', es: 'No hay resumen disponible.' },
-    risk_analysis: explanations.risk_analysis || { en: 'No risk analysis available.', es: 'No hay análisis de riesgo disponible.' },
-    diversification_analysis: explanations.diversification_analysis || { en: 'No diversification analysis available.', es: 'No hay análisis de diversificación disponible.' },
-    market_context: explanations.market_context || { en: 'No market context available.', es: 'No hay contexto de mercado disponible.' },
-    stress_test_interpretation: explanations.stress_test_interpretation || { en: 'No stress test analysis available.', es: 'No hay análisis de prueba de estrés disponible.' }
+    summary: generateSummary(),
+    risk_analysis: generateRiskAnalysis(),
+    diversification_analysis: explanations.diversification_analysis || {
+      en: `Portfolio consists of ${Object.keys(analysis.allocations || {}).length} assets with varying weights.`,
+      es: `El portafolio consiste en ${Object.keys(analysis.allocations || {}).length} activos con pesos variables.`
+    },
+    market_context: explanations.market_context || {
+      en: 'Current market conditions and implications for the portfolio.',
+      es: 'Condiciones actuales del mercado e implicaciones para el portafolio.'
+    },
+    stress_test_interpretation: {
+      en: `Under stress scenarios, the portfolio's Value at Risk (95%) is ${formatMetric(metrics.var_95)}, indicating potential losses in extreme market conditions.`,
+      es: `Bajo escenarios de estrés, el Valor en Riesgo del portafolio (95%) es ${formatMetric(metrics.var_95)}, indicando pérdidas potenciales en condiciones extremas de mercado.`
+    }
   };
 
   return (

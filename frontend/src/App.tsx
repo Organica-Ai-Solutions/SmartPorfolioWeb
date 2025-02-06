@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react'
 import { Portfolio, PortfolioAnalysis } from './types/portfolio'
 import axios from 'axios'
-import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement } from 'chart.js'
-import { Pie, Line } from 'react-chartjs-2'
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip as ChartTooltip, Legend, ArcElement } from 'chart.js'
+import { Line, Pie } from 'react-chartjs-2'
 import { SparklesCore } from './components/ui/sparkles'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Button } from './components/ui/button'
 import { TickerSuggestions } from './components/TickerSuggestions'
 import { PortfolioExplanation } from './components/PortfolioExplanation'
-import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip'
+import { Tooltip, TooltipProvider } from "./components/ui/tooltip"
 
 ChartJS.register(
   ArcElement,
-  Tooltip,
+  ChartTooltip,
   Legend,
   CategoryScale,
   LinearScale,
@@ -543,27 +544,22 @@ function App() {
                       <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
                         <div className="flex justify-between items-center mb-4">
                           <h3 className="font-semibold text-purple-400">Optimal Allocations</h3>
-                          <UiTooltip>
-                            <TooltipTrigger asChild>
-                              <button 
-                                type="button"
-                                className="p-2 hover:bg-white/10 rounded-full transition-colors"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
-                                  <circle cx="12" cy="12" r="10"/>
-                                  <path d="M12 16v-4"/>
-                                  <path d="M12 8h.01"/>
-                                </svg>
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent 
-                              side="left" 
-                              sideOffset={5}
-                              className="z-[100] max-w-[300px]"
+                          <Tooltip
+                            content="This pie chart shows the optimal portfolio allocation based on Modern Portfolio Theory. Each slice represents the percentage that should be invested in each asset to achieve the best risk-adjusted returns."
+                            side="left"
+                            sideOffset={5}
+                          >
+                            <button 
+                              type="button"
+                              className="p-2 hover:bg-white/10 rounded-full transition-colors"
                             >
-                              <p>This pie chart shows the optimal portfolio allocation based on Modern Portfolio Theory. Each slice represents the percentage that should be invested in each asset to achieve the best risk-adjusted returns.</p>
-                            </TooltipContent>
-                          </UiTooltip>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 16v-4"/>
+                                <path d="M12 8h.01"/>
+                              </svg>
+                            </button>
+                          </Tooltip>
                         </div>
                         {chartData && chartData.labels && chartData.labels.length > 0 ? (
                           <div className="w-full h-[400px] flex items-center justify-center">
@@ -601,27 +597,22 @@ function App() {
                     <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
                       <div className="flex justify-between items-center mb-4">
                         <h3 className="font-semibold text-purple-400">Historical Performance</h3>
-                        <UiTooltip>
-                          <TooltipTrigger asChild>
-                            <button 
-                              type="button"
-                              className="p-2 hover:bg-white/10 rounded-full transition-colors"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
-                                <circle cx="12" cy="12" r="10"/>
-                                <path d="M12 16v-4"/>
-                                <path d="M12 8h.01"/>
-                              </svg>
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent 
-                            side="left" 
-                            sideOffset={5}
-                            className="z-[100] max-w-[300px]"
+                        <Tooltip
+                          content="This chart compares your portfolio's performance against the S&P 500 benchmark. The purple line shows your portfolio value, the blue line shows the S&P 500, and the red dotted line shows rolling volatility (risk level over time)."
+                          side="left"
+                          sideOffset={5}
+                        >
+                          <button 
+                            type="button"
+                            className="p-2 hover:bg-white/10 rounded-full transition-colors"
                           >
-                            <p>This chart compares your portfolio's performance against the S&P 500 benchmark. The purple line shows your portfolio value, the blue line shows the S&P 500, and the red dotted line shows rolling volatility (risk level over time).</p>
-                          </TooltipContent>
-                        </UiTooltip>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
+                              <circle cx="12" cy="12" r="10"/>
+                              <path d="M12 16v-4"/>
+                              <path d="M12 8h.01"/>
+                            </svg>
+                          </button>
+                        </Tooltip>
                       </div>
                       <div className="w-full h-[300px]">
                         {analysis?.historical_performance?.dates?.length > 0 ? (
@@ -745,27 +736,22 @@ function App() {
                     <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
                       <div className="flex justify-between items-center mb-4">
                         <h3 className="font-semibold text-purple-400">Drawdown Analysis</h3>
-                        <UiTooltip>
-                          <TooltipTrigger asChild>
-                            <button 
-                              type="button"
-                              className="p-2 hover:bg-white/10 rounded-full transition-colors"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
-                                <circle cx="12" cy="12" r="10"/>
-                                <path d="M12 16v-4"/>
-                                <path d="M12 8h.01"/>
-                              </svg>
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent 
-                            side="left" 
-                            sideOffset={5}
-                            className="z-[100] max-w-[300px]"
+                        <Tooltip
+                          content="The drawdown chart shows how much your portfolio has declined from its peak value at any given time. This helps visualize the maximum losses you might experience and how long it takes to recover from them."
+                          side="left"
+                          sideOffset={5}
+                        >
+                          <button 
+                            type="button"
+                            className="p-2 hover:bg-white/10 rounded-full transition-colors"
                           >
-                            <p>The drawdown chart shows how much your portfolio has declined from its peak value at any given time. This helps visualize the maximum losses you might experience and how long it takes to recover from them.</p>
-                          </TooltipContent>
-                        </UiTooltip>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
+                              <circle cx="12" cy="12" r="10"/>
+                              <path d="M12 16v-4"/>
+                              <path d="M12 8h.01"/>
+                            </svg>
+                          </button>
+                        </Tooltip>
                       </div>
                       <div className="w-full h-[200px]">
                         <Line
