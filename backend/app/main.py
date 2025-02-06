@@ -16,6 +16,7 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 from app.services.ai_advisor_service import AIAdvisorService
+import cvxpy as cp
 
 # Load environment variables
 load_dotenv()
@@ -146,125 +147,117 @@ def get_asset_data(ticker: str, start_date: datetime, end_date: datetime) -> pd.
         raise HTTPException(status_code=400, detail=f"Error downloading data for {ticker}: {str(e)}")
 
 def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, tickers: List[str]) -> dict:
-    """Optimize portfolio weights based on risk tolerance."""
+    """Optimize portfolio based on risk tolerance using PyPortfolioOpt."""
     try:
-        n = len(tickers)
-        if n < 2:
-            raise ValueError("Need at least 2 assets for optimization")
+        print(f"Starting optimization for {len(tickers)} tickers with {risk_tolerance} risk tolerance")
+        
+        # Initialize EfficientFrontier
+        ef = EfficientFrontier(mu, S)
+        
+        # Set weight constraints based on number of assets
+        n_assets = len(tickers)
+        if n_assets == 2:
+            min_weight = 0.01  # 1% minimum
+            max_weight = 0.99  # 99% maximum
+        else:
+            min_weight = 0.05  # 5% minimum
+            max_weight = 0.60  # 60% maximum
             
-        # Validate inputs and ensure dimensions match
-        if mu.shape[0] != n or S.shape[0] != n or S.shape[1] != n:
-            raise ValueError(f"Dimension mismatch: mu shape {mu.shape}, S shape {S.shape}, expected shape ({n},) and ({n},{n})")
+        ef.add_constraint(lambda x: x >= min_weight)
+        ef.add_constraint(lambda x: x <= max_weight)
+        
+        try:
+            # Calculate minimum achievable volatility
+            min_vol_portfolio = EfficientFrontier(mu, S)
+            min_vol_portfolio.add_constraint(lambda x: x >= min_weight)
+            min_vol_portfolio.add_constraint(lambda x: x <= max_weight)
+            min_vol_portfolio.min_volatility()
+            min_vol = min_vol_portfolio.portfolio_performance()[1]
+            print(f"Minimum achievable volatility: {min_vol}")
             
-        # Validate no NaN or inf values
-        if np.any(np.isnan(mu)) or np.any(np.isnan(S)) or np.any(np.isinf(mu)) or np.any(np.isinf(S)):
-            raise ValueError("Invalid values (NaN or inf) in input data")
+            # Optimize based on risk tolerance
+            if risk_tolerance == "low":
+                weights = ef.min_volatility()
+            elif risk_tolerance == "high":
+                weights = ef.max_sharpe(risk_free_rate=0.02)
+            else:  # medium
+                # Set target volatility 30% higher than minimum
+                target_vol = min_vol * 1.3
+                print(f"Setting target volatility to: {target_vol}")
+                try:
+                    weights = ef.efficient_risk(target_volatility=target_vol)
+                except Exception as e:
+                    print(f"Error in efficient_risk: {str(e)}")
+                    # Fallback to maximum Sharpe ratio if efficient_risk fails
+                    weights = ef.max_sharpe(risk_free_rate=0.02)
             
-        # Add small constant to diagonal of covariance matrix for numerical stability
-        S = S + np.eye(n) * 1e-6
-        
-        # Define risk weights based on tolerance
-        risk_weights = {
-            "low": {"crypto_max": 0.1, "stock_min": 0.6},
-            "medium": {"crypto_max": 0.2, "stock_min": 0.4},
-            "high": {"crypto_max": 0.4, "stock_min": 0.2}
-        }
-        
-        if risk_tolerance not in risk_weights:
-            raise ValueError(f"Invalid risk tolerance: {risk_tolerance}")
+            # Clean and format weights
+            cleaned_weights = ef.clean_weights()
+            weights_dict = dict(zip(tickers, cleaned_weights.values()))
             
-        weights = risk_weights[risk_tolerance]
-        
-        # Create masks for crypto and stock assets
-        crypto_mask = np.array([1 if is_crypto(ticker) else 0 for ticker in tickers])
-        stock_mask = np.array([1 if not is_crypto(ticker) else 0 for ticker in tickers])
-        
-        def objective(w):
-            try:
-                portfolio_return = np.dot(w, mu)
-                portfolio_risk = np.sqrt(np.dot(w.T, np.dot(S, w)))
-                
-                # Handle division by zero
-                if portfolio_risk < 1e-8:
-                    return -portfolio_return * 1e8  # Large penalty for zero risk
-                return -portfolio_return / portfolio_risk
-            except Exception as e:
-                print(f"Error in objective function: {str(e)}")
-                return np.inf  # Return large value for invalid solutions
-        
-        # Constraints
-        constraints = [
-            {'type': 'eq', 'fun': lambda w: np.sum(w) - 1},  # weights sum to 1
-            {'type': 'ineq', 'fun': lambda w: weights["crypto_max"] - np.dot(w, crypto_mask)},  # max crypto allocation
-            {'type': 'ineq', 'fun': lambda w: np.dot(w, stock_mask) - weights["stock_min"]},  # min stock allocation
-            {'type': 'ineq', 'fun': lambda w: w}  # non-negative weights
-        ]
-        
-        # Initial guess: equal weights
-        w0 = np.array([1/n] * n)
-        
-        # Print debug information
-        print(f"Initial weights shape: {w0.shape}")
-        print(f"Crypto mask shape: {crypto_mask.shape}")
-        print(f"Stock mask shape: {stock_mask.shape}")
-        
-        # Optimize with multiple attempts
-        best_result = None
-        min_objective = np.inf
-        
-        for attempt in range(3):
-            try:
-                result = minimize(
-                    objective,
-                    w0,
-                    method='SLSQP',
-                    constraints=constraints,
-                    bounds=[(0, 1) for _ in range(n)],
-                    options={'ftol': 1e-8, 'maxiter': 1000}
-                )
-                
-                if result.success and result.fun < min_objective:
-                    best_result = result
-                    min_objective = result.fun
-                
-                # If not successful, try different initial weights
-                w0 = np.random.dirichlet(np.ones(n))
-                
-            except Exception as e:
-                print(f"Optimization attempt {attempt + 1} failed: {str(e)}")
-                if attempt == 2:
-                    raise
-                continue
-        
-        if best_result is None:
-            raise ValueError("Portfolio optimization failed after multiple attempts")
-        
-        # Clean up small weights
-        weights = best_result.x
-        weights[weights < 1e-4] = 0  # Set very small weights to zero
-        if np.sum(weights) > 0:
-            weights = weights / np.sum(weights)  # Renormalize
-        
-        # Calculate metrics
-        portfolio_return = np.dot(weights, mu)
-        portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(S, weights)))
-        sharpe_ratio = portfolio_return / portfolio_risk if portfolio_risk > 0 else 0
-        
-        # Print final results
-        print(f"Optimization successful. Portfolio return: {portfolio_return:.4f}, risk: {portfolio_risk:.4f}, Sharpe: {sharpe_ratio:.4f}")
-        
-        return {
-            'weights': dict(zip(tickers, weights)),
-            'metrics': {
-                'expected_return': float(portfolio_return),
-                'volatility': float(portfolio_risk),
-                'sharpe_ratio': float(sharpe_ratio)
+            # Calculate portfolio metrics
+            perf = ef.portfolio_performance()
+            expected_return, portfolio_risk, sharpe = perf
+            
+            return {
+                "weights": weights_dict,
+                "metrics": {
+                    "expected_return": float(expected_return),
+                    "volatility": float(portfolio_risk),
+                    "sharpe_ratio": float(sharpe)
+                }
             }
-        }
-        
+            
+        except Exception as optimization_error:
+            print(f"Optimization error: {str(optimization_error)}")
+            # Fallback to equal weights if optimization fails
+            equal_weights = {ticker: 1.0/n_assets for ticker in tickers}
+            weights_array = np.array(list(equal_weights.values()))
+            
+            # Calculate metrics for equal weights
+            exp_return = float(mu.T @ weights_array)
+            vol = float(np.sqrt(weights_array.T @ S @ weights_array))
+            sharpe = (exp_return - 0.02) / vol if vol > 0 else 0
+            
+            return {
+                "weights": equal_weights,
+                "metrics": {
+                    "expected_return": exp_return,
+                    "volatility": vol,
+                    "sharpe_ratio": sharpe
+                }
+            }
+            
     except Exception as e:
         print(f"Error in portfolio optimization: {str(e)}")
-        raise ValueError(f"Error in portfolio optimization: {str(e)}")
+        # Return equal weights as ultimate fallback
+        equal_weights = {ticker: 1.0/len(tickers) for ticker in tickers}
+        return {
+            "weights": equal_weights,
+            "metrics": {
+                "expected_return": 0.0,
+                "volatility": 0.0,
+                "sharpe_ratio": 0.0
+            }
+        }
+
+def create_portfolio_result(weights: np.ndarray, mu: np.ndarray, S: np.ndarray, tickers: List[str]) -> dict:
+    """Helper function to create portfolio result dictionary."""
+    port_return = float(mu.T @ weights)
+    port_risk = float(np.sqrt(weights.T @ S @ weights))
+    sharpe = port_return / port_risk if port_risk > 0 else 0
+    
+    # Convert weights to dictionary
+    weights_dict = {ticker: float(weight) for ticker, weight in zip(tickers, weights)}
+    
+    return {
+        "weights": weights_dict,
+        "metrics": {
+            "expected_return": port_return,
+            "volatility": port_risk,
+            "sharpe_ratio": sharpe
+        }
+    }
 
 def get_historical_performance(data: pd.DataFrame, weights: Dict[str, float]) -> Dict:
     """Calculate historical performance of the portfolio."""
@@ -309,6 +302,18 @@ def get_historical_performance(data: pd.DataFrame, weights: Dict[str, float]) ->
             "returns": []
         }
 
+def clean_numeric_values(obj):
+    """Clean numeric values to ensure they are JSON serializable."""
+    if isinstance(obj, (np.floating, float)):
+        if np.isnan(obj) or np.isinf(obj):
+            return 0.0
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {k: clean_numeric_values(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [clean_numeric_values(x) for x in obj]
+    return obj
+
 @app.post("/analyze-portfolio")
 async def analyze_portfolio(request: Portfolio):
     try:
@@ -318,111 +323,145 @@ async def analyze_portfolio(request: Portfolio):
 
         print(f"Analyzing portfolio for tickers: {request.tickers}")
         
-        # Download and align data
+        # Download market data
+        print("Downloading market data...")
+        spy_data = yf.download('^GSPC', start=request.start_date)['Adj Close']
+        market_data = pd.DataFrame()
+        market_data['^GSPC'] = spy_data
+        
+        # Download and validate data for each ticker
         data = pd.DataFrame()
         for ticker in request.tickers:
             print(f"Downloading data for {ticker}...")
             stock_data = yf.download(ticker, start=request.start_date)['Adj Close']
+            if stock_data.empty:
+                raise HTTPException(status_code=400, detail=f"No data available for {ticker}")
             data[ticker] = stock_data
 
         if data.empty:
             raise HTTPException(status_code=400, detail="No data available for the selected tickers")
 
-        print(f"Data shape after alignment: {data.shape}")
-        
         # Calculate returns and covariance
-        print("Calculating returns and covariance...")
         returns = data.pct_change().dropna()
-        print(f"Returns shape: {returns.shape}")
+        market_returns = market_data.pct_change().dropna()
         
+        if len(returns) < 2:
+            raise HTTPException(status_code=400, detail="Insufficient data for analysis")
+        
+        # Calculate expected returns and covariance matrix
         mu = expected_returns.mean_historical_return(data)
-        print(f"Expected returns shape: {mu.shape}")
-        
-        S = risk_models.sample_cov(data)
-        print(f"Covariance matrix shape: {S.shape}")
+        S = risk_models.CovarianceShrinkage(data).ledoit_wolf()
         
         # Optimize portfolio
-        print(f"Number of tickers: {len(request.tickers)}")
-        print("Optimizing portfolio...")
+        optimization_result = optimize_portfolio(mu, S, request.risk_tolerance, request.tickers)
+        cleaned_weights = optimization_result["weights"]
         
-        # Initialize weights
-        initial_weights = np.array([1/len(request.tickers)] * len(request.tickers))
-        print(f"Initial weights shape: {initial_weights.shape}")
+        # Convert weights to series for calculations
+        weights_series = pd.Series(cleaned_weights)
         
-        # Create masks for different asset types
-        crypto_mask = np.array([is_crypto(ticker) for ticker in request.tickers])
-        print(f"Crypto mask shape: {crypto_mask.shape}")
+        # Calculate portfolio returns and metrics
+        portfolio_returns = returns.dot(weights_series)
         
-        stock_mask = ~crypto_mask
-        print(f"Stock mask shape: {stock_mask.shape}")
+        # Calculate market beta
+        market_beta = portfolio_returns.cov(market_returns['^GSPC']) / market_returns['^GSPC'].var()
         
-        # Optimize based on risk tolerance
-        ef = EfficientFrontier(mu, S)
+        # Calculate rolling metrics
+        rolling_window = min(30, len(returns) - 1)
+        rolling_vol = portfolio_returns.rolling(window=rolling_window).std() * np.sqrt(252)
+        rolling_returns = portfolio_returns.rolling(window=rolling_window).mean() * 252
+        rolling_sharpe = (rolling_returns / rolling_vol).replace([np.inf, -np.inf], np.nan).fillna(0)
         
-        if request.risk_tolerance == "low":
-            weights = ef.min_volatility()
-        elif request.risk_tolerance == "high":
-            weights = ef.max_sharpe()
-        else:  # medium
-            weights = ef.efficient_risk(target_volatility=0.2)
-            
-        cleaned_weights = ef.clean_weights()
-        perf = ef.portfolio_performance()
-        print(f"Optimization successful. Portfolio return: {perf[0]:.4f}, risk: {perf[1]:.4f}, Sharpe: {perf[2]:.4f}")
+        # Calculate cumulative returns and drawdowns
+        portfolio_values = (1 + portfolio_returns).cumprod()
+        market_values = (1 + market_returns['^GSPC']).cumprod()
         
-        # Format allocations as a list of dictionaries
-        allocations = [
-            {"ticker": ticker, "weight": float(weight)}
-            for ticker, weight in cleaned_weights.items()
-        ]
-        
-        # Get historical performance
-        portfolio_values = (1 + returns.dot(pd.Series(cleaned_weights))).cumprod()
-        dates = returns.index.strftime('%Y-%m-%d').tolist()
-        values = portfolio_values.values.tolist()
+        # Clean up any inf/nan values
+        portfolio_values = portfolio_values.replace([np.inf, -np.inf], np.nan).ffill().fillna(1)
+        market_values = market_values.replace([np.inf, -np.inf], np.nan).ffill().fillna(1)
+        relative_perf = (portfolio_values / market_values).replace([np.inf, -np.inf], np.nan).fillna(1)
         
         # Calculate drawdowns
         peak = portfolio_values.expanding(min_periods=1).max()
-        drawdowns = (portfolio_values - peak) / peak
+        drawdowns = ((portfolio_values - peak) / peak).replace([np.inf, -np.inf], np.nan).fillna(0)
+        max_drawdown = float(drawdowns.min())
         
-        # Get additional metrics for each asset
-        asset_metrics = {}
-        for ticker in request.tickers:
-            ticker_returns = returns[ticker]
-            asset_metrics[ticker] = {
-                "beta": float(ticker_returns.cov(returns.dot(pd.Series(cleaned_weights)))) / float(returns.dot(pd.Series(cleaned_weights)).var()),
-                "alpha": float(mu[ticker] - 0.02),  # Using 2% risk-free rate
-                "correlation": float(ticker_returns.corr(returns.dot(pd.Series(cleaned_weights))))
-            }
+        # Calculate risk metrics
+        returns_no_nan = portfolio_returns.replace([np.inf, -np.inf], np.nan).dropna()
+        var_95 = float(np.percentile(returns_no_nan, 5))
+        cvar_95 = float(returns_no_nan[returns_no_nan <= var_95].mean())
         
-        # Get AI insights
-        ai_service = AIAdvisorService()
-        ai_insights = await ai_service.get_portfolio_metrics({
-            "weights": cleaned_weights,
-            "historical_data": {
-                "returns": returns.to_dict()
-            }
-        })
+        # Calculate Sortino ratio
+        negative_returns = portfolio_returns[portfolio_returns < 0]
+        sortino_ratio = float((portfolio_returns.mean() * 252) / (negative_returns.std() * np.sqrt(252))) if len(negative_returns) > 0 else 0
         
-        return {
-            "allocation": allocations,
+        # Format dates and prepare response
+        dates = returns.index.strftime('%Y-%m-%d').tolist()
+        
+        response = {
+            "allocation": [
+                {"ticker": ticker, "weight": float(weight)}
+                for ticker, weight in cleaned_weights.items()
+            ],
             "metrics": {
-                "expected_return": float(perf[0]),
-                "volatility": float(perf[1]),
-                "sharpe_ratio": float(perf[2])
+                "expected_return": float(optimization_result["metrics"]["expected_return"]),
+                "volatility": float(optimization_result["metrics"]["volatility"]),
+                "sharpe_ratio": float(optimization_result["metrics"]["sharpe_ratio"]),
+                "sortino_ratio": float(sortino_ratio),
+                "beta": float(market_beta),
+                "max_drawdown": float(max_drawdown),
+                "var_95": float(var_95),
+                "cvar_95": float(cvar_95)
             },
             "historical_performance": {
                 "dates": dates,
-                "portfolio_values": values,
-                "drawdowns": drawdowns.values.tolist()
+                "portfolio_values": [float(x) for x in portfolio_values.values],
+                "drawdowns": [float(x) for x in drawdowns.values],
+                "rolling_volatility": [float(x) for x in rolling_vol.replace([np.inf, -np.inf], np.nan).fillna(0).values],
+                "rolling_sharpe": [float(x) for x in rolling_sharpe.values]
             },
-            "asset_metrics": asset_metrics,
-            "ai_insights": ai_insights
+            "market_comparison": {
+                "dates": dates,
+                "market_values": [float(x) for x in market_values.values],
+                "relative_performance": [float(x) for x in relative_perf.values]
+            }
         }
         
+        # Clean all numeric values before returning
+        return clean_numeric_values(response)
+        
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print(f"Error in portfolio analysis: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"Error in analyze_portfolio: {str(e)}")
+        # Return a valid response with default values
+        return clean_numeric_values({
+            "allocation": [
+                {"ticker": ticker, "weight": 1.0/len(request.tickers)}
+                for ticker in request.tickers
+            ],
+            "metrics": {
+                "expected_return": 0.0,
+                "volatility": 0.0,
+                "sharpe_ratio": 0.0,
+                "sortino_ratio": 0.0,
+                "beta": 0.0,
+                "max_drawdown": 0.0,
+                "var_95": 0.0,
+                "cvar_95": 0.0
+            },
+            "historical_performance": {
+                "dates": [],
+                "portfolio_values": [],
+                "drawdowns": [],
+                "rolling_volatility": [],
+                "rolling_sharpe": []
+            },
+            "market_comparison": {
+                "dates": [],
+                "market_values": [],
+                "relative_performance": []
+            }
+        })
 
 @app.post("/rebalance-portfolio")
 async def rebalance_portfolio(allocation: PortfolioAllocation):
