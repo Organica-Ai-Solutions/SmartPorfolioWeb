@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import os
 from datetime import datetime, timedelta
 import yfinance as yf
@@ -161,23 +161,47 @@ def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, ticke
     try:
         print(f"Starting optimization for {len(tickers)} tickers with {risk_tolerance} risk tolerance")
         
-        # Initialize EfficientFrontier
+        # Initialize EfficientFrontier with robust covariance estimation
+        S = risk_models.CovarianceShrinkage(S).ledoit_wolf()
         ef = EfficientFrontier(mu, S)
         
-        # Set weight constraints based on number of assets
+        # Set weight constraints based on portfolio composition and risk tolerance
         n_assets = len(tickers)
-        if n_assets == 2:
-            min_weight = 0.01  # 1% minimum
-            max_weight = 0.99  # 99% maximum
+        
+        # Determine if portfolio contains crypto assets
+        crypto_assets = sum(1 for ticker in tickers if ticker.endswith('-USD'))
+        is_crypto_heavy = crypto_assets > n_assets / 3  # Consider crypto-heavy if more than 1/3 are crypto
+        
+        # Adjust constraints based on portfolio composition
+        if is_crypto_heavy:
+            if risk_tolerance == "low":
+                min_weight = 0.02
+                max_weight = 0.15  # Lower max weight for crypto in low risk
+            else:
+                min_weight = 0.02
+                max_weight = 0.25  # Higher max weight for crypto in higher risk
         else:
-            min_weight = 0.05  # 5% minimum
-            max_weight = 0.60  # 60% maximum
-            
+            if n_assets <= 3:
+                min_weight = 0.10
+                max_weight = 0.60
+            else:
+                min_weight = 0.05
+                max_weight = 0.40
+        
+        # Add weight constraints
         ef.add_constraint(lambda x: x >= min_weight)
         ef.add_constraint(lambda x: x <= max_weight)
         
+        # Add sector constraints if applicable
         try:
-            # Calculate minimum achievable volatility
+            sector_constraints = get_sector_constraints(tickers)
+            if sector_constraints:
+                ef.add_sector_constraints(sector_constraints)
+        except Exception as e:
+            print(f"Error adding sector constraints: {str(e)}")
+        
+        try:
+            # Calculate minimum achievable volatility for reference
             min_vol_portfolio = EfficientFrontier(mu, S)
             min_vol_portfolio.add_constraint(lambda x: x >= min_weight)
             min_vol_portfolio.add_constraint(lambda x: x <= max_weight)
@@ -185,46 +209,71 @@ def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, ticke
             min_vol = min_vol_portfolio.portfolio_performance()[1]
             print(f"Minimum achievable volatility: {min_vol}")
             
-            # Optimize based on risk tolerance
+            # Optimize based on risk tolerance with fallback strategies
             if risk_tolerance == "low":
-                weights = ef.min_volatility()
-            elif risk_tolerance == "high":
-                weights = ef.max_sharpe(risk_free_rate=0.02)
-            else:  # medium
-                # Set target volatility 30% higher than minimum
-                target_vol = min_vol * 1.3
-                print(f"Setting target volatility to: {target_vol}")
                 try:
+                    # Try minimum volatility with L2 regularization
+                    ef.add_objective(objective_functions.L2_reg, gamma=0.1)
+                    weights = ef.min_volatility()
+                except Exception:
+                    # Fallback to simple min volatility
+                    weights = ef.min_volatility()
+                    
+            elif risk_tolerance == "high":
+                try:
+                    # Try maximum Sharpe ratio with higher risk-free rate
+                    weights = ef.max_sharpe(risk_free_rate=0.03)
+                except Exception:
+                    try:
+                        # Fallback to maximum quadratic utility
+                        weights = ef.maximize_quadratic_utility(risk_aversion=0.5)
+                    except Exception:
+                        # Ultimate fallback to maximum Sharpe with standard risk-free rate
+                        weights = ef.max_sharpe(risk_free_rate=0.02)
+            else:  # medium
+                target_vol = min_vol * 1.3  # Target 30% higher than minimum volatility
+                try:
+                    # Try efficient risk with target volatility
                     weights = ef.efficient_risk(target_volatility=target_vol)
-                except Exception as e:
-                    print(f"Error in efficient_risk: {str(e)}")
-                    # Fallback to maximum Sharpe ratio if efficient_risk fails
-                    weights = ef.max_sharpe(risk_free_rate=0.02)
+                except Exception:
+                    try:
+                        # Fallback to maximum Sharpe ratio
+                        weights = ef.max_sharpe(risk_free_rate=0.02)
+                    except Exception:
+                        # Ultimate fallback to equal weights with constraints
+                        weights = {ticker: 1.0/n_assets for ticker in tickers}
             
             # Clean and format weights
             cleaned_weights = ef.clean_weights()
             weights_dict = dict(zip(tickers, cleaned_weights.values()))
             
-            # Calculate portfolio metrics
+            # Calculate comprehensive portfolio metrics
             perf = ef.portfolio_performance()
             expected_return, portfolio_risk, sharpe = perf
+            
+            # Calculate additional metrics
+            portfolio_beta = calculate_portfolio_beta(mu, S, weights_dict)
             
             return {
                 "weights": weights_dict,
                 "metrics": {
                     "expected_return": float(expected_return),
                     "volatility": float(portfolio_risk),
-                    "sharpe_ratio": float(sharpe)
+                    "sharpe_ratio": float(sharpe),
+                    "beta": float(portfolio_beta),
+                    "min_volatility": float(min_vol),
+                    "risk_tolerance": risk_tolerance,
+                    "is_crypto_heavy": is_crypto_heavy
                 }
             }
             
         except Exception as optimization_error:
             print(f"Optimization error: {str(optimization_error)}")
-            # Fallback to equal weights if optimization fails
-            equal_weights = {ticker: 1.0/n_assets for ticker in tickers}
-            weights_array = np.array(list(equal_weights.values()))
+            # Fallback to risk-adjusted equal weights
+            equal_weights = get_risk_adjusted_equal_weights(tickers, mu, S)
             
             # Calculate metrics for equal weights
+            weights_array = np.array(list(equal_weights.values()))
             exp_return = float(mu.T @ weights_array)
             vol = float(np.sqrt(weights_array.T @ S @ weights_array))
             sharpe = (exp_return - 0.02) / vol if vol > 0 else 0
@@ -234,7 +283,11 @@ def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, ticke
                 "metrics": {
                     "expected_return": exp_return,
                     "volatility": vol,
-                    "sharpe_ratio": sharpe
+                    "sharpe_ratio": sharpe,
+                    "beta": 1.0,
+                    "min_volatility": vol,
+                    "risk_tolerance": risk_tolerance,
+                    "is_crypto_heavy": is_crypto_heavy
                 }
             }
             
@@ -247,9 +300,66 @@ def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, ticke
             "metrics": {
                 "expected_return": 0.0,
                 "volatility": 0.0,
-                "sharpe_ratio": 0.0
+                "sharpe_ratio": 0.0,
+                "beta": 1.0,
+                "min_volatility": 0.0,
+                "risk_tolerance": risk_tolerance,
+                "is_crypto_heavy": False
             }
         }
+
+def get_risk_adjusted_equal_weights(tickers: List[str], mu: np.ndarray, S: np.ndarray) -> Dict[str, float]:
+    """Calculate risk-adjusted equal weights based on asset volatilities."""
+    try:
+        # Calculate individual asset volatilities
+        vols = np.sqrt(np.diag(S))
+        # Inverse volatility weighting
+        inv_vols = 1 / vols
+        weights = inv_vols / np.sum(inv_vols)
+        return dict(zip(tickers, weights))
+    except Exception:
+        # Fallback to simple equal weights
+        return {ticker: 1.0/len(tickers) for ticker in tickers}
+
+def calculate_portfolio_beta(mu: np.ndarray, S: np.ndarray, weights: Dict[str, float]) -> float:
+    """Calculate portfolio beta using CAPM."""
+    try:
+        weights_array = np.array(list(weights.values()))
+        portfolio_var = np.sqrt(weights_array.T @ S @ weights_array)
+        market_var = np.sqrt(S[0,0])  # Assuming first asset is market proxy
+        return portfolio_var / market_var if market_var > 0 else 1.0
+    except Exception:
+        return 1.0
+
+def get_sector_constraints(tickers: List[str]) -> Dict[str, Tuple[List[int], Tuple[float, float]]]:
+    """Get sector constraints for portfolio optimization."""
+    try:
+        # Define basic sector classifications
+        tech_tickers = ['AAPL', 'GOOGL', 'MSFT', 'META', 'NVDA']
+        finance_tickers = ['JPM', 'BAC', 'GS', 'MS', 'V']
+        crypto_tickers = [t for t in tickers if t.endswith('-USD')]
+        
+        constraints = {}
+        
+        # Add tech sector constraints
+        tech_indices = [i for i, t in enumerate(tickers) if t in tech_tickers]
+        if tech_indices:
+            constraints['tech'] = (tech_indices, (0.0, 0.4))  # Max 40% in tech
+            
+        # Add finance sector constraints
+        finance_indices = [i for i, t in enumerate(tickers) if t in finance_tickers]
+        if finance_indices:
+            constraints['finance'] = (finance_indices, (0.0, 0.35))  # Max 35% in finance
+            
+        # Add crypto constraints
+        crypto_indices = [i for i, t in enumerate(tickers) if t in crypto_tickers]
+        if crypto_indices:
+            constraints['crypto'] = (crypto_indices, (0.0, 0.30))  # Max 30% in crypto
+            
+        return constraints
+    except Exception as e:
+        print(f"Error creating sector constraints: {str(e)}")
+        return {}
 
 def create_portfolio_result(weights: np.ndarray, mu: np.ndarray, S: np.ndarray, tickers: List[str]) -> dict:
     """Helper function to create portfolio result dictionary."""

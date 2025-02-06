@@ -450,7 +450,7 @@ function App() {
             >
               <div className="space-y-10">
                 {/* AI Ticker Suggestions */}
-                <div>
+      <div>
                   <h2 className="text-2xl font-bold text-center mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
                     AI Ticker Suggestions
                   </h2>
@@ -827,7 +827,7 @@ function App() {
                           </div>
                         )}
                       </div>
-                    </div>
+      </div>
 
                     {/* Drawdown Chart */}
                     <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
@@ -847,7 +847,7 @@ function App() {
                               <path d="M12 16v-4"/>
                               <path d="M12 8h.01"/>
                             </svg>
-                          </button>
+        </button>
                         </Tooltip>
                       </div>
                       <div className="w-full h-[200px]">

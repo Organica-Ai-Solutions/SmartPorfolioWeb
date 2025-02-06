@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import Portfolio, PortfolioSnapshot, RiskAlert, Notification
 from pypfopt import risk_models, expected_returns, objective_functions
 from pypfopt.efficient_frontier import EfficientFrontier
+import scipy.stats
 
 class PortfolioService:
     def __init__(self, db: Session):
@@ -37,45 +38,72 @@ class PortfolioService:
 
     def calculate_risk_metrics(self, data: pd.DataFrame, weights: Dict[str, float]) -> Dict:
         """Calculate comprehensive risk metrics for the portfolio."""
-        returns = data.pct_change()
+        # Handle missing or invalid data
+        data = data.fillna(method='ffill').fillna(method='bfill')
+        returns = data.pct_change().fillna(0)
         weight_arr = np.array([weights[ticker] for ticker in data.columns])
         
-        # Calculate portfolio returns
+        # Calculate portfolio returns with proper handling of outliers
         portfolio_returns = returns.dot(weight_arr)
+        portfolio_returns = portfolio_returns.clip(portfolio_returns.quantile(0.001), portfolio_returns.quantile(0.999))
         
-        # Calculate drawdown
+        # Calculate drawdown with proper handling
         cumulative_returns = (1 + portfolio_returns).cumprod()
         rolling_max = cumulative_returns.expanding().max()
-        drawdowns = cumulative_returns / rolling_max - 1
+        drawdowns = (cumulative_returns - rolling_max) / rolling_max
         max_drawdown = drawdowns.min()
         
-        # Calculate VaR and CVaR at different confidence levels
+        # Calculate VaR and CVaR at different confidence levels with better statistical handling
         confidence_levels = [0.99, 0.95, 0.90]
         var_metrics = {}
         cvar_metrics = {}
         for conf in confidence_levels:
-            var = np.percentile(portfolio_returns, (1 - conf) * 100)
-            cvar = portfolio_returns[portfolio_returns <= var].mean()
-            var_metrics[f"var_{int(conf * 100)}"] = float(var)
-            cvar_metrics[f"cvar_{int(conf * 100)}"] = float(cvar)
+            # Use Gaussian and historical VaR/CVaR
+            gaussian_var = float(portfolio_returns.mean() - portfolio_returns.std() * np.sqrt(2) * scipy.stats.norm.ppf(conf))
+            historical_var = float(np.percentile(portfolio_returns, (1 - conf) * 100))
+            # Use the more conservative estimate
+            var = min(gaussian_var, historical_var)
+            var_metrics[f"var_{int(conf * 100)}"] = var
+            
+            # Calculate CVaR (Expected Shortfall)
+            cvar = float(portfolio_returns[portfolio_returns <= var].mean())
+            cvar_metrics[f"cvar_{int(conf * 100)}"] = cvar
         
-        # Calculate rolling volatility
-        rolling_vol = returns.rolling(window=30).std() * np.sqrt(252)
+        # Calculate rolling volatility with adjustable window
+        min_window = min(30, len(returns) - 1)
+        rolling_vol = returns.rolling(window=min_window, min_periods=1).std() * np.sqrt(252)
         current_vol = rolling_vol.iloc[-1]
         
-        # Calculate correlation matrix
-        correlation_matrix = returns.corr()
+        # Calculate correlation matrix with shrinkage
+        correlation_matrix = risk_models.CovarianceShrinkage(returns).ledoit_wolf()
         
-        # Calculate tracking error vs S&P 500
-        spy_data = yf.download('^GSPC', start=data.index[0], end=data.index[-1])['Adj Close']
-        spy_returns = spy_data.pct_change()
-        tracking_error = np.std(portfolio_returns - spy_returns) * np.sqrt(252)
+        # Calculate tracking error vs appropriate benchmark
+        try:
+            # Determine if portfolio is crypto-heavy
+            crypto_count = sum(1 for ticker in data.columns if ticker.endswith('-USD'))
+            benchmark = '^GSPC' if crypto_count < len(data.columns) / 2 else 'BTC-USD'
+            benchmark_data = yf.download(benchmark, start=data.index[0], end=data.index[-1])['Adj Close']
+            benchmark_returns = benchmark_data.pct_change().fillna(0)
+            tracking_error = np.std(portfolio_returns - benchmark_returns) * np.sqrt(252)
+        except Exception:
+            tracking_error = current_vol  # Fallback to volatility if benchmark data unavailable
+        
+        # Calculate additional risk metrics
+        downside_returns = portfolio_returns[portfolio_returns < 0]
+        downside_vol = np.std(downside_returns) * np.sqrt(252) if len(downside_returns) > 0 else current_vol
+        
+        # Calculate Sortino ratio
+        risk_free_rate = 0.02  # Adjustable risk-free rate
+        excess_return = portfolio_returns.mean() * 252 - risk_free_rate
+        sortino_ratio = excess_return / downside_vol if downside_vol > 0 else 0
         
         return {
             "max_drawdown": float(max_drawdown),
             "current_volatility": float(current_vol),
             "tracking_error": float(tracking_error),
             "correlation_matrix": correlation_matrix.to_dict(),
+            "downside_volatility": float(downside_vol),
+            "sortino_ratio": float(sortino_ratio),
             **var_metrics,
             **cvar_metrics
         }
