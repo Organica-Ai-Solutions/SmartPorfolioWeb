@@ -36,7 +36,7 @@ export function StockAnalysis({ ticker, metrics }: StockAnalysisProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6"
+      className="bg-[#0a0a0a]/95 backdrop-blur-md border border-white/10 rounded-xl p-6"
     >
       <div className="flex justify-between items-start mb-4">
         <h3 className="text-lg font-bold text-purple-400">{ticker}</h3>

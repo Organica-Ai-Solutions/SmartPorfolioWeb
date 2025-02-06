@@ -85,7 +85,7 @@ const tickerToSlug: Record<string, string> = {
   DASH: "doordash"
 }
 
-export function TickerSuggestions({ onSelectTicker, maxTickers = 10 }: TickerSuggestionsProps) {
+export function TickerSuggestions({ onSelectTicker, maxTickers = 14 }: TickerSuggestionsProps) {
   const [error, setError] = useState('')
   const [selectedTickers, setSelectedTickers] = useState<string[]>([])
   const [inputValue, setInputValue] = useState('')
@@ -139,41 +139,7 @@ export function TickerSuggestions({ onSelectTicker, maxTickers = 10 }: TickerSug
   }
 
   return (
-    <div className="space-y-6 p-4">
-      {/* Interactive Icon Cloud with reduced height for better visibility */}
-      <div className="relative h-[400px]">
-        <IconCloud 
-          tickers={allTickers} 
-          onTickerSelect={handleTickerClick} 
-        />
-      </div>
-
-      {/* Selected Tickers */}
-      <div className="flex flex-wrap gap-2 min-h-[40px]">
-        <AnimatePresence>
-          {selectedTickers.map((ticker) => (
-            <motion.div
-              key={ticker}
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              className="px-3 py-1.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-lg
-                       border border-purple-500/30 text-white flex items-center gap-2
-                       shadow-lg"
-            >
-              <span className="font-medium">{ticker}</span>
-              <button
-                onClick={() => handleRemoveTicker(ticker)}
-                className="hover:bg-white/10 rounded-full w-5 h-5 flex items-center justify-center
-                         transition-colors text-purple-400 hover:text-purple-300"
-              >
-                ×
-              </button>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
-
+    <div className="space-y-8">
       {/* Input Section */}
       <div className="flex gap-3">
         <div className="relative flex-1">
@@ -184,7 +150,7 @@ export function TickerSuggestions({ onSelectTicker, maxTickers = 10 }: TickerSug
             onChange={handleInputChange}
             onKeyDown={handleInputKeyDown}
             placeholder="Enter stock ticker (e.g., AAPL)"
-            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg 
+            className="w-full px-4 py-3 bg-[#0a0a0a] border border-white/10 rounded-lg 
                      text-white placeholder-gray-400 focus:outline-none focus:ring-2
                      focus:ring-purple-500/50 transition-all"
             maxLength={5}
@@ -201,7 +167,7 @@ export function TickerSuggestions({ onSelectTicker, maxTickers = 10 }: TickerSug
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="absolute z-50 w-full mt-1 bg-black/90 border border-white/10 rounded-lg 
+                className="absolute z-50 w-full mt-1 bg-[#0a0a0a] border border-white/10 rounded-lg 
                          shadow-lg overflow-hidden backdrop-blur-sm"
               >
                 {filteredTickers.map((ticker) => (
@@ -222,12 +188,23 @@ export function TickerSuggestions({ onSelectTicker, maxTickers = 10 }: TickerSug
 
         <button
           onClick={() => handleTickerClick(inputValue)}
-          className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg 
+          className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg 
                    font-medium hover:opacity-90 transition-all duration-200 text-white
-                   shadow-lg hover:shadow-purple-500/20 whitespace-nowrap"
+                   shadow-lg hover:shadow-purple-500/20"
         >
           Add
         </button>
+      </div>
+
+      {/* Interactive Icon Cloud */}
+      <div className="relative h-[500px] bg-[#050505] rounded-xl overflow-hidden border border-white/10">
+        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent pointer-events-none z-10 opacity-60" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#050505] via-transparent to-transparent pointer-events-none z-10 opacity-60" />
+        <div className="absolute inset-0 bg-[#ffffff]/[0.02] pointer-events-none" />
+        <IconCloud 
+          tickers={allTickers} 
+          onTickerSelect={handleTickerClick} 
+        />
       </div>
 
       {/* Error Message */}

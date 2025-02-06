@@ -408,7 +408,7 @@ function App() {
 
   return (
     <TooltipProvider>
-      <div className="relative min-h-screen bg-gradient-to-b from-[#1a1a1a] to-[#0d0d0d] text-white">
+      <div className="relative min-h-screen bg-[#030303] text-white">
         {/* Background sparkles */}
         <div className="fixed inset-0 w-full h-full pointer-events-none">
           <SparklesCore
@@ -446,19 +446,43 @@ function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
-              className="relative bg-[#2a2a2a]/95 backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-2xl border border-white/20"
+              className="relative bg-[#0a0a0a]/95 backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-2xl border border-white/10"
             >
-              <div className="space-y-8">
+              <div className="space-y-10">
                 {/* AI Ticker Suggestions */}
-                <div className="mb-8">
+                <div>
                   <h2 className="text-2xl font-bold text-center mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
                     AI Ticker Suggestions
                   </h2>
+                  
+                  {/* Selected Tickers Display */}
+                  <div className="mb-6 flex flex-wrap gap-2">
+                    {portfolio.tickers.map((ticker) => (
+                      <motion.div
+                        key={ticker}
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0 }}
+                        className="px-3 py-1.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-lg
+                                 border border-purple-500/30 text-white flex items-center gap-2"
+                      >
+                        <span className="font-medium">{ticker}</span>
+                        <button
+                          onClick={() => removeTicker(ticker)}
+                          className="hover:bg-white/10 rounded-full w-5 h-5 flex items-center justify-center
+                                   transition-colors text-purple-400 hover:text-purple-300"
+                        >
+                          ×
+                        </button>
+                      </motion.div>
+                    ))}
+                  </div>
+                  
                   <TickerSuggestions onSelectTicker={addTicker} />
                 </div>
 
                 {/* Time Period and Risk Selection */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Time Period Selector */}
                   <div className="flex gap-2 justify-start items-center flex-wrap">
                     {(['3m', '6m', '1y', '5y', 'max'] as TimePeriod[]).map((period) => (
