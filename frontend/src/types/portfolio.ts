@@ -13,8 +13,11 @@ export interface PortfolioMetrics {
     expected_return: number;
     volatility: number;
     sharpe_ratio: number;
-    value_at_risk_95?: number;
-    conditional_var_95?: number;
+    sortino_ratio: number;
+    beta: number;
+    max_drawdown: number;
+    var_95: number;
+    cvar_95: number;
 }
 
 export interface AssetMetrics {
@@ -22,6 +25,11 @@ export interface AssetMetrics {
     annual_volatility: number;
     beta: number;
     weight: number;
+    alpha: number;
+    volatility: number;
+    var_95: number;
+    max_drawdown: number;
+    correlation: number;
 }
 
 export interface TechnicalIndicators {
@@ -80,6 +88,55 @@ export interface PortfolioAnalysis {
     discrete_allocation: {
         shares: { [key: string]: number };
         leftover: number;
+    };
+    historical_performance: {
+        dates: string[];
+        portfolio_values: number[];
+        drawdowns: number[];
+        rolling_volatility: number[];
+        rolling_sharpe: number[];
+    };
+    market_comparison: {
+        dates: string[];
+        market_values: number[];
+        relative_performance: number[];
+    };
+    ai_insights?: {
+        portfolio_analysis: {
+            risk_metrics: any;
+            diversification_metrics: any;
+        };
+        market_analysis: any;
+        risk_analysis: any;
+        explanations: {
+            summary: {
+                en: string;
+                es: string;
+            };
+            risk_analysis: {
+                en: string;
+                es: string;
+            };
+            diversification_analysis: {
+                en: string;
+                es: string;
+            };
+            market_context: {
+                en: string;
+                es: string;
+            };
+            stress_test_interpretation: {
+                en: string;
+                es: string;
+            };
+        };
+        recommendations: string[];
+        market_outlook: {
+            short_term: string;
+            medium_term: string;
+            long_term: string;
+            key_drivers: string[];
+        };
     };
     market_analysis?: MarketAnalysis;
 }
