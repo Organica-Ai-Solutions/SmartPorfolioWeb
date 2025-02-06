@@ -7,12 +7,14 @@ from datetime import datetime, timedelta
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from scipy.optimize import minimize
 from pypfopt.efficient_frontier import EfficientFrontier
 from pypfopt import risk_models, expected_returns, objective_functions
 from pypfopt.discrete_allocation import DiscreteAllocation
 from dotenv import load_dotenv
-from alpaca_trade_api import REST
-from scipy.optimize import minimize
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
 from app.services.ai_advisor_service import AIAdvisorService
 
 # Load environment variables
@@ -45,54 +47,85 @@ class TickerPreferences(BaseModel):
     investment_horizon: str = "long_term"
     sectors: Optional[List[str]] = None
     market_cap: Optional[str] = None
+    risk_level: Optional[str] = None
+    investment_style: Optional[str] = None
 
 def calculate_portfolio_metrics(data: pd.DataFrame, weights: Dict[str, float]) -> Dict:
     """Calculate additional portfolio metrics."""
-    returns = data.pct_change()
-    
-    # Convert weights dict to array
-    weight_arr = np.array([weights[ticker] for ticker in data.columns])
-    
-    # Calculate portfolio metrics
-    portfolio_return = np.sum(returns.mean() * weight_arr) * 252
-    portfolio_vol = np.sqrt(np.dot(weight_arr.T, np.dot(returns.cov() * 252, weight_arr)))
-    sharpe_ratio = portfolio_return / portfolio_vol
-    
-    # Calculate individual asset metrics
-    asset_returns = returns.mean() * 252
-    asset_vols = returns.std() * np.sqrt(252)
-    
-    # Calculate beta
-    market_data = yf.download('^GSPC', start=data.index[0], end=data.index[-1])['Adj Close']
-    market_returns = market_data.pct_change()
-    betas = {}
-    for ticker in data.columns:
-        covariance = np.cov(returns[ticker].dropna(), market_returns.dropna())[0,1]
-        market_variance = np.var(market_returns.dropna())
-        betas[ticker] = covariance / market_variance
-    
-    # Calculate Value at Risk (VaR) and Conditional Value at Risk (CVaR)
-    portfolio_returns = returns.dot(weight_arr)
-    var_95 = np.percentile(portfolio_returns, 5)
-    cvar_95 = portfolio_returns[portfolio_returns <= var_95].mean()
-    
-    return {
-        "portfolio_metrics": {
-            "expected_annual_return": float(portfolio_return),
-            "annual_volatility": float(portfolio_vol),
-            "sharpe_ratio": float(sharpe_ratio),
-            "value_at_risk_95": float(var_95),
-            "conditional_var_95": float(cvar_95)
-        },
-        "asset_metrics": {
-            ticker: {
-                "annual_return": float(asset_returns[ticker]),
-                "annual_volatility": float(asset_vols[ticker]),
-                "beta": float(betas[ticker]),
-                "weight": float(weights[ticker])
-            } for ticker in data.columns
+    try:
+        # Calculate returns
+        returns = data.pct_change().dropna()
+        
+        # Convert weights dict to array
+        weight_arr = np.array([weights[ticker] for ticker in data.columns])
+        
+        # Get market data aligned with our date range
+        market_data = yf.download('^GSPC', start=data.index[0], end=data.index[-1])['Adj Close']
+        market_returns = market_data.pct_change()
+        
+        # Align market returns with asset returns
+        aligned_data = pd.concat([returns, market_returns], axis=1).dropna()
+        asset_returns = aligned_data[returns.columns]
+        market_returns = aligned_data[market_returns.name]
+        
+        # Calculate portfolio metrics
+        portfolio_return = np.sum(asset_returns.mean() * weight_arr) * 252
+        portfolio_vol = np.sqrt(np.dot(weight_arr.T, np.dot(asset_returns.cov() * 252, weight_arr)))
+        sharpe_ratio = portfolio_return / portfolio_vol if portfolio_vol > 0 else 0
+        
+        # Calculate individual asset metrics
+        asset_returns_annual = asset_returns.mean() * 252
+        asset_vols = asset_returns.std() * np.sqrt(252)
+        
+        # Calculate betas
+        betas = {}
+        for ticker in data.columns:
+            covariance = np.cov(asset_returns[ticker], market_returns)[0,1]
+            market_variance = np.var(market_returns)
+            betas[ticker] = covariance / market_variance if market_variance > 0 else 0
+        
+        # Calculate portfolio returns for VaR and CVaR
+        portfolio_returns = asset_returns.dot(weight_arr)
+        var_95 = np.percentile(portfolio_returns, 5)
+        cvar_95 = portfolio_returns[portfolio_returns <= var_95].mean()
+        
+        return {
+            "portfolio_metrics": {
+                "expected_annual_return": float(portfolio_return),
+                "annual_volatility": float(portfolio_vol),
+                "sharpe_ratio": float(sharpe_ratio),
+                "value_at_risk_95": float(var_95),
+                "conditional_var_95": float(cvar_95)
+            },
+            "asset_metrics": {
+                ticker: {
+                    "annual_return": float(asset_returns_annual[ticker]),
+                    "annual_volatility": float(asset_vols[ticker]),
+                    "beta": float(betas[ticker]),
+                    "weight": float(weights[ticker])
+                } for ticker in data.columns
+            }
         }
-    }
+    except Exception as e:
+        print(f"Error in calculate_portfolio_metrics: {str(e)}")
+        # Return safe default values
+        return {
+            "portfolio_metrics": {
+                "expected_annual_return": 0.0,
+                "annual_volatility": 0.0,
+                "sharpe_ratio": 0.0,
+                "value_at_risk_95": 0.0,
+                "conditional_var_95": 0.0
+            },
+            "asset_metrics": {
+                ticker: {
+                    "annual_return": 0.0,
+                    "annual_volatility": 0.0,
+                    "beta": 0.0,
+                    "weight": float(weights.get(ticker, 0.0))
+                } for ticker in data.columns
+            }
+        }
 
 def is_crypto(ticker: str) -> bool:
     """Check if the ticker is a cryptocurrency."""
@@ -119,9 +152,13 @@ def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, ticke
         if n < 2:
             raise ValueError("Need at least 2 assets for optimization")
             
-        # Validate inputs
-        if np.any(np.isnan(mu)) or np.any(np.isnan(S)):
-            raise ValueError("Invalid values in input data")
+        # Validate inputs and ensure dimensions match
+        if mu.shape[0] != n or S.shape[0] != n or S.shape[1] != n:
+            raise ValueError(f"Dimension mismatch: mu shape {mu.shape}, S shape {S.shape}, expected shape ({n},) and ({n},{n})")
+            
+        # Validate no NaN or inf values
+        if np.any(np.isnan(mu)) or np.any(np.isnan(S)) or np.any(np.isinf(mu)) or np.any(np.isinf(S)):
+            raise ValueError("Invalid values (NaN or inf) in input data")
             
         # Add small constant to diagonal of covariance matrix for numerical stability
         S = S + np.eye(n) * 1e-6
@@ -151,7 +188,8 @@ def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, ticke
                 if portfolio_risk < 1e-8:
                     return -portfolio_return * 1e8  # Large penalty for zero risk
                 return -portfolio_return / portfolio_risk
-            except Exception:
+            except Exception as e:
+                print(f"Error in objective function: {str(e)}")
                 return np.inf  # Return large value for invalid solutions
         
         # Constraints
@@ -165,7 +203,15 @@ def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, ticke
         # Initial guess: equal weights
         w0 = np.array([1/n] * n)
         
+        # Print debug information
+        print(f"Initial weights shape: {w0.shape}")
+        print(f"Crypto mask shape: {crypto_mask.shape}")
+        print(f"Stock mask shape: {stock_mask.shape}")
+        
         # Optimize with multiple attempts
+        best_result = None
+        min_objective = np.inf
+        
         for attempt in range(3):
             try:
                 result = minimize(
@@ -177,22 +223,24 @@ def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, ticke
                     options={'ftol': 1e-8, 'maxiter': 1000}
                 )
                 
-                if result.success:
-                    break
-                    
-                # If failed, try different initial weights
+                if result.success and result.fun < min_objective:
+                    best_result = result
+                    min_objective = result.fun
+                
+                # If not successful, try different initial weights
                 w0 = np.random.dirichlet(np.ones(n))
                 
-            except Exception:
+            except Exception as e:
+                print(f"Optimization attempt {attempt + 1} failed: {str(e)}")
                 if attempt == 2:
                     raise
                 continue
         
-        if not result.success:
+        if best_result is None:
             raise ValueError("Portfolio optimization failed after multiple attempts")
         
         # Clean up small weights
-        weights = result.x
+        weights = best_result.x
         weights[weights < 1e-4] = 0  # Set very small weights to zero
         if np.sum(weights) > 0:
             weights = weights / np.sum(weights)  # Renormalize
@@ -201,6 +249,9 @@ def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, ticke
         portfolio_return = np.dot(weights, mu)
         portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(S, weights)))
         sharpe_ratio = portfolio_return / portfolio_risk if portfolio_risk > 0 else 0
+        
+        # Print final results
+        print(f"Optimization successful. Portfolio return: {portfolio_return:.4f}, risk: {portfolio_risk:.4f}, Sharpe: {sharpe_ratio:.4f}")
         
         return {
             'weights': dict(zip(tickers, weights)),
@@ -212,226 +263,284 @@ def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, ticke
         }
         
     except Exception as e:
+        print(f"Error in portfolio optimization: {str(e)}")
         raise ValueError(f"Error in portfolio optimization: {str(e)}")
+
+def get_historical_performance(data: pd.DataFrame, weights: Dict[str, float]) -> Dict:
+    """Calculate historical performance of the portfolio."""
+    try:
+        # Calculate daily returns for each asset
+        returns = data.pct_change()
+        
+        # Calculate weighted returns
+        weight_array = np.array([weights[ticker] for ticker in data.columns])
+        portfolio_returns = returns.dot(weight_array)
+        
+        # Calculate cumulative returns
+        portfolio_values = (1 + portfolio_returns).cumprod()
+        
+        # Calculate drawdown
+        peak = portfolio_values.expanding(min_periods=1).max()
+        drawdowns = (portfolio_values - peak) / peak
+        
+        # Replace inf and nan values
+        portfolio_returns = portfolio_returns.replace([np.inf, -np.inf], np.nan).fillna(0)
+        portfolio_values = portfolio_values.replace([np.inf, -np.inf], np.nan).fillna(1)
+        drawdowns = drawdowns.replace([np.inf, -np.inf], np.nan).fillna(0)
+        
+        # Convert timestamps to string format and ensure all values are Python native types
+        dates = [d.strftime('%Y-%m-%d') for d in data.index]
+        values = [float(x) for x in portfolio_values.values]
+        drawdown_values = [float(x) for x in drawdowns.values]
+        return_values = [float(x) for x in portfolio_returns.values]
+        
+        return {
+            "dates": dates,
+            "portfolio_values": values,
+            "drawdowns": drawdown_values,
+            "returns": return_values
+        }
+    except Exception as e:
+        print(f"Error in get_historical_performance: {str(e)}")
+        return {
+            "dates": [],
+            "portfolio_values": [],
+            "drawdowns": [],
+            "returns": []
+        }
 
 @app.post("/analyze-portfolio")
 async def analyze_portfolio(request: Portfolio):
     try:
-        # Validate input
-        if not request.tickers:
-            raise HTTPException(status_code=400, detail="No tickers provided")
+        # Validate request
         if len(request.tickers) < 2:
-            raise HTTPException(status_code=400, detail="Please provide at least 2 tickers")
-        if not request.start_date:
-            raise HTTPException(status_code=400, detail="No start date provided")
-        if request.risk_tolerance not in ["low", "medium", "high"]:
-            raise HTTPException(status_code=400, detail="Invalid risk tolerance. Must be 'low', 'medium', or 'high'")
-            
-        # Convert start_date to datetime with error handling
-        try:
-            start_date = datetime.strptime(request.start_date, "%Y-%m-%d")
-            if start_date > datetime.now():
-                raise HTTPException(status_code=400, detail="Start date cannot be in the future")
-            if start_date < datetime.now() - timedelta(days=3650):  # 10 years
-                raise HTTPException(status_code=400, detail="Start date cannot be more than 10 years in the past")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-            
-        end_date = datetime.now()
-        
-        # Download data for all assets with progress tracking
-        data = {}
-        min_start_date = None
-        max_end_date = None
-        
-        # Validate each ticker and download data
-        invalid_tickers = []
-        for ticker in request.tickers:
-            try:
-                print(f"Downloading data for {ticker}...")  # Debug log
-                series = get_asset_data(ticker, start_date, end_date)
-                if not series.empty:
-                    data[ticker] = series
-                    # Update common date range
-                    if min_start_date is None or series.index[0] > min_start_date:
-                        min_start_date = series.index[0]
-                    if max_end_date is None or series.index[-1] < max_end_date:
-                        max_end_date = series.index[-1]
-                else:
-                    invalid_tickers.append(ticker)
-            except Exception as e:
-                print(f"Error downloading {ticker}: {str(e)}")  # Debug log
-                invalid_tickers.append(ticker)
-                
-        if not data:
-            raise HTTPException(status_code=400, detail="Could not fetch data for any of the provided tickers")
-        if invalid_tickers:
-            raise HTTPException(status_code=400, detail=f"Invalid or unavailable tickers: {', '.join(invalid_tickers)}")
-        
-        # Create DataFrame with aligned data
-        df = pd.DataFrame(data)
-        print(f"Data shape: {df.shape}")  # Debug log
-        
-        # Ensure we have enough data points
-        if len(df) < 30:  # Minimum 30 days of data
-            raise HTTPException(status_code=400, detail="Insufficient historical data. Need at least 30 days.")
-        
-        # Slice to common date range and handle missing data
-        df = df.loc[min_start_date:max_end_date]
-        df = df.resample('B').ffill(limit=5).bfill().interpolate()
-        df = df.dropna()
-        
-        if df.empty:
-            raise HTTPException(status_code=400, detail="No valid data available after processing")
+            raise HTTPException(status_code=400, detail="At least 2 tickers are required")
 
-        # Calculate returns and covariance with error handling
-        returns = df.pct_change().dropna()
-        if len(returns) < 2:
-            raise HTTPException(status_code=400, detail="Insufficient data for returns calculation")
+        print(f"Analyzing portfolio for tickers: {request.tickers}")
+        
+        # Download and align data
+        data = pd.DataFrame()
+        for ticker in request.tickers:
+            print(f"Downloading data for {ticker}...")
+            stock_data = yf.download(ticker, start=request.start_date)['Adj Close']
+            data[ticker] = stock_data
+
+        if data.empty:
+            raise HTTPException(status_code=400, detail="No data available for the selected tickers")
+
+        print(f"Data shape after alignment: {data.shape}")
+        
+        # Calculate returns and covariance
+        print("Calculating returns and covariance...")
+        returns = data.pct_change().dropna()
+        print(f"Returns shape: {returns.shape}")
+        
+        mu = expected_returns.mean_historical_return(data)
+        print(f"Expected returns shape: {mu.shape}")
+        
+        S = risk_models.sample_cov(data)
+        print(f"Covariance matrix shape: {S.shape}")
+        
+        # Optimize portfolio
+        print(f"Number of tickers: {len(request.tickers)}")
+        print("Optimizing portfolio...")
+        
+        # Initialize weights
+        initial_weights = np.array([1/len(request.tickers)] * len(request.tickers))
+        print(f"Initial weights shape: {initial_weights.shape}")
+        
+        # Create masks for different asset types
+        crypto_mask = np.array([is_crypto(ticker) for ticker in request.tickers])
+        print(f"Crypto mask shape: {crypto_mask.shape}")
+        
+        stock_mask = ~crypto_mask
+        print(f"Stock mask shape: {stock_mask.shape}")
+        
+        # Optimize based on risk tolerance
+        ef = EfficientFrontier(mu, S)
+        
+        if request.risk_tolerance == "low":
+            weights = ef.min_volatility()
+        elif request.risk_tolerance == "high":
+            weights = ef.max_sharpe()
+        else:  # medium
+            weights = ef.efficient_risk(target_volatility=0.2)
             
-        try:
-            print("Calculating returns and covariance...")  # Debug log
-            mu = returns.mean().values * 252  # Annualized returns
-            S = returns.cov().values * 252  # Annualized covariance
-            
-            # Check for invalid values
-            if np.any(np.isnan(mu)) or np.any(np.isnan(S)):
-                raise HTTPException(status_code=400, detail="Invalid values in returns calculation")
-                
-            # Optimize portfolio
-            print("Optimizing portfolio...")  # Debug log
-            result = optimize_portfolio(mu, S, request.risk_tolerance, list(data.keys()))
-            
-            # Get latest prices
-            latest_prices = df.iloc[-1]
-            
-            # Prepare response
-            allocation = []
-            for ticker, weight in result['weights'].items():
-                allocation.append({
-                    "ticker": ticker,
-                    "weight": weight,
-                    "type": "crypto" if is_crypto(ticker) else "stock",
-                    "latest_price": float(latest_prices[ticker])
-                })
-            
-            return {
-                "allocation": allocation,
-                "metrics": result['metrics']
+        cleaned_weights = ef.clean_weights()
+        perf = ef.portfolio_performance()
+        print(f"Optimization successful. Portfolio return: {perf[0]:.4f}, risk: {perf[1]:.4f}, Sharpe: {perf[2]:.4f}")
+        
+        # Format allocations as a list of dictionaries
+        allocations = [
+            {"ticker": ticker, "weight": float(weight)}
+            for ticker, weight in cleaned_weights.items()
+        ]
+        
+        # Get historical performance
+        portfolio_values = (1 + returns.dot(pd.Series(cleaned_weights))).cumprod()
+        dates = returns.index.strftime('%Y-%m-%d').tolist()
+        values = portfolio_values.values.tolist()
+        
+        # Calculate drawdowns
+        peak = portfolio_values.expanding(min_periods=1).max()
+        drawdowns = (portfolio_values - peak) / peak
+        
+        # Get additional metrics for each asset
+        asset_metrics = {}
+        for ticker in request.tickers:
+            ticker_returns = returns[ticker]
+            asset_metrics[ticker] = {
+                "beta": float(ticker_returns.cov(returns.dot(pd.Series(cleaned_weights)))) / float(returns.dot(pd.Series(cleaned_weights)).var()),
+                "alpha": float(mu[ticker] - 0.02),  # Using 2% risk-free rate
+                "correlation": float(ticker_returns.corr(returns.dot(pd.Series(cleaned_weights))))
             }
-            
-        except Exception as e:
-            print(f"Error in optimization: {str(e)}")  # Debug log
-            raise HTTPException(status_code=400, detail=f"Error in portfolio optimization: {str(e)}")
-            
-    except HTTPException:
-        raise
+        
+        # Get AI insights
+        ai_service = AIAdvisorService()
+        ai_insights = await ai_service.get_portfolio_metrics({
+            "weights": cleaned_weights,
+            "historical_data": {
+                "returns": returns.to_dict()
+            }
+        })
+        
+        return {
+            "allocation": allocations,
+            "metrics": {
+                "expected_return": float(perf[0]),
+                "volatility": float(perf[1]),
+                "sharpe_ratio": float(perf[2])
+            },
+            "historical_performance": {
+                "dates": dates,
+                "portfolio_values": values,
+                "drawdowns": drawdowns.values.tolist()
+            },
+            "asset_metrics": asset_metrics,
+            "ai_insights": ai_insights
+        }
+        
     except Exception as e:
-        print(f"Unexpected error: {str(e)}")  # Debug log
+        print(f"Error in portfolio analysis: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/rebalance-portfolio")
 async def rebalance_portfolio(allocation: PortfolioAllocation):
     try:
-        # Initialize Alpaca API client
-        alpaca_api_key = os.getenv("ALPACA_API_KEY")
-        alpaca_secret_key = os.getenv("ALPACA_SECRET_KEY")
-        
-        if not alpaca_api_key or not alpaca_secret_key:
+        # Validate allocations exist and are not empty
+        if not allocation.allocations or not isinstance(allocation.allocations, dict):
+            raise HTTPException(status_code=400, detail="Invalid allocation data: allocations must be a non-empty dictionary")
+
+        # Convert allocations to float and validate
+        formatted_allocations = {}
+        for ticker, weight in allocation.allocations.items():
+            try:
+                weight_float = float(weight)
+                if not (0 <= weight_float <= 1):
+                    raise ValueError(f"Weight for {ticker} must be between 0 and 1")
+                formatted_allocations[ticker] = weight_float
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail=f"Invalid weight value for {ticker}")
+
+        # Validate total allocation
+        total_allocation = sum(formatted_allocations.values())
+        if not (0.99 <= total_allocation <= 1.01):
             raise HTTPException(
-                status_code=400,
-                detail="Alpaca API credentials not configured"
+                status_code=400, 
+                detail=f"Total allocation must sum to 1 (got {total_allocation:.4f})"
             )
 
-        alpaca = REST(
-            alpaca_api_key,
-            alpaca_secret_key,
-            base_url='https://paper-api.alpaca.markets'
-        )
+        print(f"Received allocations: {formatted_allocations}")
+        print(f"Total allocation: {total_allocation}")
+
+        # Initialize Alpaca client
+        api_key = os.getenv("ALPACA_API_KEY")
+        secret_key = os.getenv("ALPACA_SECRET_KEY")
+        trading_client = TradingClient(api_key, secret_key, paper=True)
 
         # Get account information
-        account = alpaca.get_account()
+        account = trading_client.get_account()
         equity = float(account.equity)
+        print(f"Account equity: ${equity}")
 
         # Get current positions
-        positions = {p.symbol: p for p in alpaca.list_positions()}
+        positions = {p.symbol: float(p.qty) for p in trading_client.get_all_positions()}
+        print(f"Current positions: {positions}")
 
-        # Process each allocation
+        # Calculate target position values
+        target_positions = {
+            symbol: equity * weight 
+            for symbol, weight in formatted_allocations.items()
+        }
+        print(f"Target positions: {target_positions}")
+
+        # Get current prices
+        current_prices = {}
+        for symbol in formatted_allocations.keys():
+            try:
+                ticker = yf.Ticker(symbol)
+                current_price = ticker.history(period='1d')['Close'].iloc[-1]
+                current_prices[symbol] = float(current_price)
+                print(f"Current price for {symbol}: ${current_price:.2f}")
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Error getting price for {symbol}: {str(e)}"
+                )
+
+        # Calculate required trades
         orders = []
-        for symbol, target_allocation in allocation.allocations.items():
-            # Calculate target value
-            target_value = equity * target_allocation
+        for symbol, target_value in target_positions.items():
+            current_shares = positions.get(symbol, 0)
+            target_shares = int(target_value / current_prices[symbol])
             
-            # Get current position if exists
-            current_position = positions.get(symbol)
-            
-            if current_position:
-                current_value = float(current_position.market_value)
-                diff_value = target_value - current_value
+            if abs(target_shares - current_shares) > 0:
+                side = OrderSide.BUY if target_shares > current_shares else OrderSide.SELL
+                qty = abs(target_shares - current_shares)
                 
-                if abs(diff_value) > 1:  # Only trade if difference is significant
-                    # Get current price
-                    latest_trade = alpaca.get_latest_trade(symbol)
-                    price = float(latest_trade.price)
+                if qty > 0:  # Only create order if quantity is positive
+                    order_data = MarketOrderRequest(
+                        symbol=symbol,
+                        qty=qty,
+                        side=side,
+                        time_in_force=TimeInForce.DAY
+                    )
                     
-                    # Calculate quantity to trade
-                    qty = abs(int(diff_value / price))
-                    
-                    if qty > 0:
-                        side = 'buy' if diff_value > 0 else 'sell'
+                    try:
+                        order = trading_client.submit_order(order_data=order_data)
+                        print(f"Order submitted for {symbol}: {side.value} {qty} shares")
                         orders.append({
                             "symbol": symbol,
                             "qty": qty,
-                            "side": side
+                            "side": side.value,
+                            "status": "executed",
+                            "order_id": order.id
                         })
-            else:
-                # New position
-                latest_trade = alpaca.get_latest_trade(symbol)
-                price = float(latest_trade.price)
-                qty = int(target_value / price)
-                
-                if qty > 0:
-                    orders.append({
-                        "symbol": symbol,
-                        "qty": qty,
-                        "side": "buy"
-                    })
-
-        # Execute orders
-        executed_orders = []
-        for order in orders:
-            try:
-                executed_order = alpaca.submit_order(
-                    symbol=order["symbol"],
-                    qty=order["qty"],
-                    side=order["side"],
-                    type='market',
-                    time_in_force='gtc'
-                )
-                executed_orders.append({
-                    **order,
-                    "status": "executed",
-                    "order_id": executed_order.id
-                })
-            except Exception as e:
-                executed_orders.append({
-                    **order,
-                    "status": "failed",
-                    "error": str(e)
-                })
+                    except Exception as e:
+                        print(f"Error submitting order for {symbol}: {str(e)}")
+                        orders.append({
+                            "symbol": symbol,
+                            "qty": qty,
+                            "side": side.value,
+                            "status": "failed",
+                            "error": str(e)
+                        })
 
         return {
             "message": "Portfolio rebalancing completed",
-            "orders": executed_orders,
+            "orders": orders,
             "account_balance": {
-                "equity": float(account.equity),
+                "equity": equity,
                 "cash": float(account.cash),
                 "buying_power": float(account.buying_power)
             }
         }
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"Error during rebalancing: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error during rebalancing: {str(e)}")
 
 @app.post("/get-ticker-suggestions")
 async def get_ticker_suggestions(preferences: TickerPreferences):
@@ -443,6 +552,61 @@ async def get_ticker_suggestions(preferences: TickerPreferences):
         return suggestions
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+async def get_portfolio_metrics(portfolio_data: Dict) -> Dict:
+    """Get advanced portfolio metrics with AI insights."""
+    try:
+        # Convert timestamps to strings in historical data
+        if 'historical_data' in portfolio_data and 'returns' in portfolio_data['historical_data']:
+            returns_dict = {}
+            for ticker, returns in portfolio_data['historical_data']['returns'].items():
+                if isinstance(returns, pd.Series):
+                    returns_dict[ticker] = {
+                        date.strftime('%Y-%m-%d'): float(value)
+                        for date, value in returns.items()
+                        if not (np.isnan(value) or np.isinf(value))
+                    }
+                elif isinstance(returns, dict):
+                    returns_dict[ticker] = {
+                        str(date) if isinstance(date, pd.Timestamp) else str(date): float(value)
+                        for date, value in returns.items()
+                        if not (np.isnan(value) or np.isinf(value))
+                    }
+                else:
+                    returns_dict[ticker] = returns
+            portfolio_data['historical_data']['returns'] = returns_dict
+
+        # Get AI insights
+        ai_advisor = AIAdvisorService()
+        metrics = await ai_advisor.get_portfolio_metrics(portfolio_data)
+        
+        # Clean up any potential inf/nan values in the response
+        def clean_value(value):
+            if isinstance(value, (float, np.float64)):
+                if np.isnan(value) or np.isinf(value):
+                    return 0.0
+                return float(value)
+            elif isinstance(value, dict):
+                return {k: clean_value(v) for k, v in value.items()}
+            elif isinstance(value, (list, tuple)):
+                return [clean_value(v) for v in value]
+            return value
+        
+        cleaned_metrics = clean_value(metrics)
+        
+        return cleaned_metrics
+        
+    except Exception as e:
+        print(f"Error getting portfolio metrics: {str(e)}")
+        return {
+            "sortino_ratio": 0.0,
+            "max_drawdown": 0.0,
+            "market_regime": "normal",
+            "recommendations": [
+                "Unable to generate recommendations at this time",
+                "Please try again later"
+            ]
+        }
 
 if __name__ == "__main__":
     import uvicorn
