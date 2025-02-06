@@ -133,11 +133,21 @@ def is_crypto(ticker: str) -> bool:
     return ticker.endswith('-USD') or ticker.endswith('USDT')
 
 def get_asset_data(ticker: str, start_date: datetime, end_date: datetime) -> pd.Series:
+    """Get asset data with special handling for crypto assets."""
     try:
+        # For crypto assets, we don't need to adjust for market hours
         if is_crypto(ticker):
             data = yf.download(ticker, start=start_date, end=end_date)['Adj Close']
         else:
+            # For stocks, we need to ensure we're only looking at market hours
             data = yf.download(ticker, start=start_date, end=end_date)['Adj Close']
+            # Filter out weekend data for stocks
+            data = data[data.index.dayofweek < 5]
+            # Filter out data outside of market hours (9:30 AM - 4:00 PM EST)
+            data = data[
+                (data.index.time >= pd.Timestamp('09:30').time()) &
+                (data.index.time <= pd.Timestamp('16:00').time())
+            ]
         
         if data.empty:
             raise HTTPException(status_code=404, detail=f"No data found for {ticker}")
@@ -323,11 +333,20 @@ async def analyze_portfolio(request: Portfolio):
 
         print(f"Analyzing portfolio for tickers: {request.tickers}")
         
-        # Download market data
+        # Download market data - use crypto-specific index for crypto-heavy portfolios
         print("Downloading market data...")
-        spy_data = yf.download('^GSPC', start=request.start_date)['Adj Close']
+        crypto_count = sum(1 for ticker in request.tickers if is_crypto(ticker))
+        if crypto_count > len(request.tickers) / 2:
+            # If more than half are crypto, use BTC as the market benchmark
+            spy_data = yf.download('BTC-USD', start=request.start_date)['Adj Close']
+            market_symbol = 'BTC-USD'
+        else:
+            # Otherwise use S&P 500
+            spy_data = yf.download('^GSPC', start=request.start_date)['Adj Close']
+            market_symbol = '^GSPC'
+            
         market_data = pd.DataFrame()
-        market_data['^GSPC'] = spy_data
+        market_data[market_symbol] = spy_data
         
         # Download and validate data for each ticker
         data = pd.DataFrame()
@@ -363,7 +382,7 @@ async def analyze_portfolio(request: Portfolio):
         portfolio_returns = returns.dot(weights_series)
         
         # Calculate market beta
-        market_beta = portfolio_returns.cov(market_returns['^GSPC']) / market_returns['^GSPC'].var()
+        market_beta = portfolio_returns.cov(market_returns[market_symbol]) / market_returns[market_symbol].var()
         
         # Calculate rolling metrics
         rolling_window = min(30, len(returns) - 1)
@@ -373,7 +392,7 @@ async def analyze_portfolio(request: Portfolio):
         
         # Calculate cumulative returns and drawdowns
         portfolio_values = (1 + portfolio_returns).cumprod()
-        market_values = (1 + market_returns['^GSPC']).cumprod()
+        market_values = (1 + market_returns[market_symbol]).cumprod()
         
         # Clean up any inf/nan values
         portfolio_values = portfolio_values.replace([np.inf, -np.inf], np.nan).ffill().fillna(1)
@@ -397,6 +416,20 @@ async def analyze_portfolio(request: Portfolio):
         # Format dates and prepare response
         dates = returns.index.strftime('%Y-%m-%d').tolist()
         
+        # Validate historical performance data
+        if len(dates) == 0 or len(portfolio_values) == 0:
+            raise HTTPException(status_code=400, detail="Invalid or missing historical performance data")
+            
+        # Ensure all data arrays have the same length
+        min_length = min(len(dates), len(portfolio_values), len(drawdowns), len(rolling_vol), len(rolling_sharpe))
+        dates = dates[:min_length]
+        portfolio_values = portfolio_values.values[:min_length]
+        drawdowns = drawdowns.values[:min_length]
+        rolling_vol = rolling_vol.values[:min_length]
+        rolling_sharpe = rolling_sharpe.values[:min_length]
+        market_values = market_values.values[:min_length]
+        relative_perf = relative_perf.values[:min_length]
+
         response = {
             "allocation": [
                 {"ticker": ticker, "weight": float(weight)}
@@ -414,15 +447,15 @@ async def analyze_portfolio(request: Portfolio):
             },
             "historical_performance": {
                 "dates": dates,
-                "portfolio_values": [float(x) for x in portfolio_values.values],
-                "drawdowns": [float(x) for x in drawdowns.values],
-                "rolling_volatility": [float(x) for x in rolling_vol.replace([np.inf, -np.inf], np.nan).fillna(0).values],
-                "rolling_sharpe": [float(x) for x in rolling_sharpe.values]
+                "portfolio_values": [float(x) for x in portfolio_values],
+                "drawdowns": [float(x) for x in drawdowns],
+                "rolling_volatility": [float(x) for x in rolling_vol],
+                "rolling_sharpe": [float(x) for x in rolling_sharpe]
             },
             "market_comparison": {
                 "dates": dates,
-                "market_values": [float(x) for x in market_values.values],
-                "relative_performance": [float(x) for x in relative_perf.values]
+                "market_values": [float(x) for x in market_values],
+                "relative_performance": [float(x) for x in relative_perf]
             }
         }
         

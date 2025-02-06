@@ -84,16 +84,32 @@ class PortfolioService:
         self,
         portfolio_id: int,
         risk_metrics: Dict,
-        thresholds: Optional[Dict] = None
+        thresholds: Optional[Dict] = None,
+        tickers: List[str] = None
     ) -> List[RiskAlert]:
         """Check for risk alerts based on current metrics and thresholds."""
+        # Determine if portfolio is crypto-heavy
+        is_crypto_heavy = False
+        if tickers:
+            crypto_count = sum(1 for ticker in tickers if ticker.endswith('-USD') or ticker.endswith('USDT'))
+            is_crypto_heavy = crypto_count > len(tickers) / 2
+
+        # Adjust thresholds based on portfolio composition
         if thresholds is None:
-            thresholds = {
-                "max_drawdown": -0.15,  # 15% maximum drawdown
-                "volatility": 0.25,     # 25% annualized volatility
-                "var_95": -0.02,        # 2% daily VaR at 95% confidence
-                "concentration": 0.35    # 35% maximum allocation to single asset
-            }
+            if is_crypto_heavy:
+                thresholds = {
+                    "max_drawdown": -0.30,  # 30% maximum drawdown for crypto
+                    "volatility": 0.50,     # 50% annualized volatility for crypto
+                    "var_95": -0.05,        # 5% daily VaR at 95% confidence for crypto
+                    "concentration": 0.35    # 35% maximum allocation to single asset
+                }
+            else:
+                thresholds = {
+                    "max_drawdown": -0.15,  # 15% maximum drawdown for stocks
+                    "volatility": 0.25,     # 25% annualized volatility for stocks
+                    "var_95": -0.02,        # 2% daily VaR at 95% confidence for stocks
+                    "concentration": 0.35    # 35% maximum allocation to single asset
+                }
         
         alerts = []
         

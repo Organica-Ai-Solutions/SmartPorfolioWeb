@@ -11,7 +11,7 @@ import {
 } from "react-icon-cloud"
 
 // Update version in the URL when fetching icons
-const SIMPLE_ICONS_VERSION = "9.19.0" // Using a stable version
+const SIMPLE_ICONS_VERSION = "14.0.0" // Match the version being used by the system
 
 export const cloudProps: Omit<ICloud, "children"> = {
   containerProps: {
@@ -253,7 +253,82 @@ const tickerToSlug: Record<string, string> = {
   SKETCH: "sketch",
   INVISION: "invision",
   DRIBBBLE: "dribbble",
-  BEHANCE: "behance"
+  BEHANCE: "behance",
+  
+  // Cryptocurrency
+  "BTC-USD": "bitcoin",
+  "ETH-USD": "ethereum",
+  "SOL-USD": "solana",
+  "ADA-USD": "cardano",
+  "DOT-USD": "polkadot",
+  "AVAX-USD": "avalancheavax",
+  "MATIC-USD": "polygon",
+  "LINK-USD": "chainlink",
+  "XRP-USD": "xrp",
+  "DOGE-USD": "dogecoin",
+  "SHIB-USD": "shibainu",
+  "UNI-USD": "uniswap",
+  "AAVE-USD": "aave",
+  "ATOM-USD": "cosmos",
+  "ALGO-USD": "algorand",
+  "FTM-USD": "fantom",
+  "NEAR-USD": "near",
+  "BNB-USD": "binance",
+  "LTC-USD": "litecoin",
+  "XLM-USD": "stellar",
+  "TRX-USD": "tron",
+  "EOS-USD": "eos",
+  "ZEC-USD": "zcash",
+  "DASH-USD": "dashpay",
+  "XMR-USD": "monero",
+  "NEO-USD": "neo",
+  "CAKE-USD": "pancakeswap",
+  "SUSHI-USD": "sushiswap",
+  "GRT-USD": "graphql",
+  "COMP-USD": "compound",
+  "MKR-USD": "maker",
+  "YFI-USD": "yearn",
+  "SNX-USD": "synthetix",
+  "BAT-USD": "brave",
+  "1INCH-USD": "1inch",
+  "THETA-USD": "theta",
+  "VET-USD": "vechain",
+  "WAVES-USD": "waves",
+  "IOTA-USD": "iota",
+  "XTZ-USD": "tezos",
+  "FLOW-USD": "flow",
+  "MANA-USD": "decentraland",
+  "SAND-USD": "thesandboxgame",
+  "AXS-USD": "axieinfinity",
+  "ENJ-USD": "enjin",
+  "CHZ-USD": "chiliz",
+  "HOT-USD": "holochain",
+  "ONE-USD": "harmony",
+  "EGLD-USD": "elrond",
+  "HBAR-USD": "hedera",
+  "ICX-USD": "icon",
+  "ZIL-USD": "zilliqa",
+  "ONT-USD": "ontology",
+  "QTUM-USD": "qtum",
+  "DGB-USD": "digibyte",
+  "RVN-USD": "ravencoin",
+  "STORJ-USD": "storj",
+  "FIL-USD": "filecoin",
+  "AR-USD": "arweave",
+  "ANKR-USD": "ankr",
+  "BAND-USD": "bandprotocol",
+  "KAVA-USD": "kava",
+  "LUNA-USD": "terra",
+  "CRV-USD": "curve",
+  "REN-USD": "renproject",
+  "BAL-USD": "balancer",
+  "PERP-USD": "perpetual",
+  "KNC-USD": "kyber",
+  "OCEAN-USD": "ocean-protocol",
+  "API3-USD": "api3",
+  "ALPHA-USD": "alpha",
+  "ORN-USD": "orion",
+  "RUNE-USD": "thorchain",
 }
 
 export const renderCustomIcon = (icon: SimpleIcon, theme: string, onClick?: () => void) => {
@@ -296,19 +371,39 @@ export function IconCloud({ tickers, onTickerSelect }: DynamicCloudProps) {
 
   useEffect(() => {
     const slugs = tickers
-      .filter(ticker => tickerToSlug[ticker])
-      .map(ticker => tickerToSlug[ticker])
+      .filter(ticker => {
+        // Check if the ticker exists in our mapping
+        const hasMapping = tickerToSlug[ticker];
+        if (!hasMapping) {
+          console.debug(`No icon mapping found for ticker: ${ticker}`);
+        }
+        return hasMapping;
+      })
+      .map(ticker => {
+        const slug = tickerToSlug[ticker];
+        console.debug(`Mapping ${ticker} to icon: ${slug}`);
+        return slug;
+      });
+    
+    if (slugs.length === 0) {
+      console.debug('No valid icons to display');
+      return;
+    }
+
+    console.debug('Fetching icons for slugs:', slugs);
     
     fetchSimpleIcons({ 
-      slugs,
-      simpleIconsCDN: `https://cdn.jsdelivr.net/npm/simple-icons@${SIMPLE_ICONS_VERSION}/icons/`
+      slugs
     })
-    .then(setData)
+    .then(data => {
+      console.debug('Successfully fetched icons:', Object.keys(data.simpleIcons));
+      setData(data);
+    })
     .catch(err => {
-      console.error('Error fetching icons:', err)
-      setError('Failed to load icons')
-    })
-  }, [tickers])
+      console.error('Error fetching icons:', err);
+      setError('Failed to load icons');
+    });
+  }, [tickers]);
 
   const renderedIcons = useMemo(() => {
     if (!data) return null

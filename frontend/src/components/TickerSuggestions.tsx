@@ -16,7 +16,12 @@ const popularTickers = {
   energy: ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'PXD', 'MPC', 'PSX', 'VLO', 'OXY', 'HAL', 'KMI', 'WMB', 'DVN', 'BP'],
   industrial: ['BA', 'CAT', 'HON', 'UPS', 'RTX', 'LMT', 'GE', 'MMM', 'DE', 'EMR', 'ETN', 'ITW', 'CSX', 'UNP', 'FDX'],
   materials: ['LIN', 'APD', 'ECL', 'SHW', 'FCX', 'NEM', 'DOW', 'DD', 'NUE', 'SCCO', 'VMC', 'MLM', 'ALB', 'CF', 'PPG'],
-  realestate: ['AMT', 'PLD', 'CCI', 'EQIX', 'PSA', 'DLR', 'O', 'WELL', 'SPG', 'AVB', 'EQR', 'VTR', 'BXP', 'ARE', 'HST']
+  realestate: ['AMT', 'PLD', 'CCI', 'EQIX', 'PSA', 'DLR', 'O', 'WELL', 'SPG', 'AVB', 'EQR', 'VTR', 'BXP', 'ARE', 'HST'],
+  crypto: [
+    'BTC-USD', 'ETH-USD', 'SOL-USD', 'ADA-USD', 'DOT-USD', 
+    'AVAX-USD', 'MATIC-USD', 'LINK-USD', 'XRP-USD', 'DOGE-USD',
+    'UNI-USD', 'AAVE-USD', 'ATOM-USD', 'BNB-USD', 'LTC-USD'
+  ]
 }
 
 // Clean up tickerToSlug mapping to only include actual stock tickers
@@ -87,7 +92,8 @@ export function TickerSuggestions({ onSelectTicker, maxTickers = 10 }: TickerSug
   const [showAutocomplete, setShowAutocomplete] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const allTickers = [...Object.values(popularTickers).flat()]
+  // Get all tickers including cryptos
+  const allTickers = Object.values(popularTickers).flat()
   // Only show tickers that have corresponding icons
   const availableTickers = allTickers.filter(ticker => tickerToSlug[ticker])
   const filteredTickers = availableTickers.filter(ticker => 
@@ -137,7 +143,7 @@ export function TickerSuggestions({ onSelectTicker, maxTickers = 10 }: TickerSug
       {/* Interactive Icon Cloud with reduced height for better visibility */}
       <div className="relative h-[400px]">
         <IconCloud 
-          tickers={availableTickers} 
+          tickers={allTickers} 
           onTickerSelect={handleTickerClick} 
         />
       </div>

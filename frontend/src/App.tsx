@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Portfolio, PortfolioAnalysis } from './types/portfolio'
 import axios from 'axios'
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip as ChartTooltip, Legend, ArcElement } from 'chart.js'
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip as ChartTooltip, Legend, ArcElement, Filler } from 'chart.js'
 import { Line, Pie } from 'react-chartjs-2'
 import { SparklesCore } from './components/ui/sparkles'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -9,6 +9,8 @@ import { Button } from './components/ui/button'
 import { TickerSuggestions } from './components/TickerSuggestions'
 import { PortfolioExplanation } from './components/PortfolioExplanation'
 import { Tooltip, TooltipProvider } from "./components/ui/tooltip"
+import { StockAnalysis } from './components/StockAnalysis'
+import { InformationCircleIcon } from "@heroicons/react/24/outline"
 
 ChartJS.register(
   ArcElement,
@@ -17,7 +19,8 @@ ChartJS.register(
   CategoryScale,
   LinearScale,
   PointElement,
-  LineElement
+  LineElement,
+  Filler
 )
 
 const API_URL = 'http://localhost:8000'
@@ -88,9 +91,14 @@ function App() {
       }
 
       // Validate tickers
-      const invalidTickers = portfolio.tickers.filter(ticker => !/^[A-Z]+$/.test(ticker))
+      const invalidTickers = portfolio.tickers.filter(ticker => {
+        // Allow both regular stock tickers and crypto tickers
+        const isStockTicker = /^[A-Z]+$/.test(ticker);
+        const isCryptoTicker = /^[A-Z]+-USD$/.test(ticker) || /^[A-Z]+USDT$/.test(ticker);
+        return !isStockTicker && !isCryptoTicker;
+      });
       if (invalidTickers.length > 0) {
-        setError(`Invalid ticker(s): ${invalidTickers.join(', ')}`)
+        setError(`Invalid ticker(s): ${invalidTickers.join(', ')}. Use format like BTC-USD for crypto`)
         return
       }
 
@@ -153,6 +161,9 @@ function App() {
         return;
       }
 
+      // Log the response and transformed data
+      console.log('Backend response:', response.data);
+      
       // Transform data with strict validation and safe defaults
       const transformedAnalysis = {
         allocations: response.data.allocations || response.data.allocation.reduce((acc: {[key: string]: number}, curr: any) => {
@@ -171,6 +182,38 @@ function App() {
           var_95: Number(response.data.metrics.var_95) || 0,
           cvar_95: Number(response.data.metrics.cvar_95) || 0
         },
+        asset_metrics: response.data.asset_metrics ? 
+          Object.entries(response.data.asset_metrics).reduce((acc: {[key: string]: any}, [ticker, metrics]: [string, any]) => {
+            acc[ticker] = {
+              annual_return: Number(metrics.annual_return) || 0,
+              annual_volatility: Number(metrics.annual_volatility) || 0,
+              beta: Number(metrics.beta) || 0,
+              weight: Number(metrics.weight) || 0,
+              alpha: Number(metrics.alpha) || 0,
+              volatility: Number(metrics.volatility) || 0,
+              var_95: Number(metrics.var_95) || 0,
+              max_drawdown: Number(metrics.max_drawdown) || 0,
+              correlation: Number(metrics.correlation) || 0
+            };
+            return acc;
+          }, {}) :
+          // If no asset_metrics, create them from allocation data
+          response.data.allocation.reduce((acc: {[key: string]: any}, curr: any) => {
+            if (curr && typeof curr.ticker === 'string' && typeof curr.weight === 'number') {
+              acc[curr.ticker] = {
+                annual_return: response.data.metrics.expected_return || 0,
+                annual_volatility: response.data.metrics.volatility || 0,
+                beta: response.data.metrics.beta || 0,
+                weight: curr.weight || 0,
+                alpha: 0, // Default value since we don't have individual alpha
+                volatility: response.data.metrics.volatility || 0,
+                var_95: response.data.metrics.var_95 || 0,
+                max_drawdown: response.data.metrics.max_drawdown || 0,
+                correlation: 1 // Default value since we don't have individual correlation
+              };
+            }
+            return acc;
+          }, {}),
         historical_performance: {
           dates: Array.isArray(response.data.historical_performance.dates) 
             ? response.data.historical_performance.dates 
@@ -217,7 +260,6 @@ function App() {
               }).filter((v: number | null): v is number => v !== null)
             : []
         },
-        asset_metrics: response.data.asset_metrics || {},
         ai_insights: response.data.ai_insights || {
           explanations: {
             summary: { en: '', es: '' },
@@ -231,7 +273,11 @@ function App() {
           shares: {},
           leftover: 0
         }
-      }
+      };
+
+      console.log('Transformed analysis:', transformedAnalysis);
+      console.log('Asset metrics:', transformedAnalysis.asset_metrics);
+      console.log('Number of assets:', Object.keys(transformedAnalysis.asset_metrics).length);
 
       // Validate transformed data before setting state
       if (!transformedAnalysis.allocations || Object.keys(transformedAnalysis.allocations).length === 0) {
@@ -592,6 +638,33 @@ function App() {
                         )}
                       </div>
                     </div>
+
+                    {/* Individual Stock Analysis Section */}
+                    {analysis && analysis.asset_metrics && Object.keys(analysis.asset_metrics).length > 0 && (
+                      <div className="space-y-6">
+                        <div className="flex items-center justify-between">
+                          <h2 className="text-xl font-semibold text-purple-400">Individual Stock Analysis</h2>
+                          <Tooltip content={{
+                            title: "Individual Stock Metrics",
+                            description: "Detailed analysis of each stock in your portfolio, including returns, risk metrics, and market performance indicators."
+                          }}>
+                            <Button variant="ghost" className="p-2">
+                              <InformationCircleIcon className="w-5 h-5" />
+                            </Button>
+                          </Tooltip>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          {Object.entries(analysis.asset_metrics).map(([ticker, metrics]) => (
+                            <StockAnalysis 
+                              key={ticker} 
+                              ticker={ticker} 
+                              metrics={metrics}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Historical Performance Chart */}
                     <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
