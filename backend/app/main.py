@@ -27,7 +27,11 @@ app = FastAPI()
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with your frontend URL
+    allow_origins=[
+        "https://organica-ai-solutions.github.io",  # GitHub Pages domain
+        "http://localhost:5173",  # Local development
+        "http://127.0.0.1:5173",  # Local development alternative
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
