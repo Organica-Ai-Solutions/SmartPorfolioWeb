@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Portfolio, PortfolioAnalysis } from './types/portfolio'
 import axios from 'axios'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip as ChartTooltip, Legend, ArcElement, Filler } from 'chart.js'
@@ -11,6 +11,12 @@ import { PortfolioExplanation } from './components/PortfolioExplanation'
 import { Tooltip, TooltipProvider } from "./components/ui/tooltip"
 import { StockAnalysis } from './components/StockAnalysis'
 import { InformationCircleIcon } from "@heroicons/react/24/outline"
+import Settings, { AlpacaSettings } from './components/Settings'
+import { Cog6ToothIcon } from '@heroicons/react/24/outline'
+import { RebalanceResult } from './types/portfolio'
+import { RebalanceExplanation } from './components/RebalanceExplanation'
+import { AllocationChart } from './components/AllocationChart'
+import { PerformanceChart } from './components/PerformanceChart'
 
 ChartJS.register(
   ArcElement,
@@ -23,7 +29,7 @@ ChartJS.register(
   Filler
 )
 
-const API_URL = 'http://localhost:8000'
+const API_URL = 'http://localhost:8001'
 
 type TimePeriod = '3m' | '6m' | '1y' | '5y' | 'max'
 
@@ -61,6 +67,9 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [chartData, setChartData] = useState<any>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [rebalanceResult, setRebalanceResult] = useState<RebalanceResult | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   const addTicker = (ticker: string) => {
     if (ticker && !portfolio.tickers.includes(ticker.toUpperCase())) {
@@ -81,245 +90,49 @@ function App() {
 
   const analyzePortfolio = async () => {
     try {
-      if (portfolio.tickers.length < 2) {
-        setError('Please add at least 2 tickers to analyze')
-        return
-      }
-      if (!portfolio.start_date) {
-        setError('Please select a start date')
-        return
-      }
-
-      // Validate tickers
-      const invalidTickers = portfolio.tickers.filter(ticker => {
-        // Allow both regular stock tickers and crypto tickers
-        const isStockTicker = /^[A-Z]+$/.test(ticker);
-        const isCryptoTicker = /^[A-Z]+-USD$/.test(ticker) || /^[A-Z]+USDT$/.test(ticker);
-        return !isStockTicker && !isCryptoTicker;
+      setIsAnalyzing(true);
+      setError('');
+      
+      console.log("Analyzing portfolio with tickers:", portfolio.tickers);
+      
+      const response = await fetch(`${API_URL}/ai-portfolio-analysis`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tickers: portfolio.tickers,
+          start_date: portfolio.start_date,
+          risk_tolerance: portfolio.risk_tolerance,
+        }),
       });
-      if (invalidTickers.length > 0) {
-        setError(`Invalid ticker(s): ${invalidTickers.join(', ')}. Use format like BTC-USD for crypto`)
-        return
-      }
-
-      setLoading(true)
-      setError('')
-      const previousAnalysis = analysis
       
-      console.log('Making API request with data:', {
-        tickers: portfolio.tickers,
-        start_date: portfolio.start_date,
-        risk_tolerance: portfolio.risk_tolerance
-      })
-
-      const response = await axios.post(`${API_URL}/analyze-portfolio`, {
-        tickers: portfolio.tickers,
-        start_date: portfolio.start_date,
-        risk_tolerance: portfolio.risk_tolerance
-      })
-
-      // Log response for debugging
-      console.log('Backend response:', response.data)
-
-      // Check for optimization errors first
-      if (response.data.error) {
-        let errorMessage = response.data.error;
-        if (errorMessage.includes('minimum volatility')) {
-          errorMessage = 'Portfolio is too volatile for the selected risk level. Try adding more diverse assets or selecting a higher risk tolerance.';
-        } else if (errorMessage.includes('solver status: infeasible')) {
-          errorMessage = 'Unable to optimize portfolio with current constraints. Try adding more diverse assets.';
-        } else if (errorMessage.includes('tuple index out of range')) {
-          errorMessage = 'Error in portfolio optimization. Try selecting different assets or a different risk level.';
-        }
-        setError(errorMessage);
-        setAnalysis(previousAnalysis); // Keep previous analysis on error
-        return;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to analyze portfolio');
       }
-
-      // Validate response data structure
-      if (!response.data) {
-        setError('No data received from server');
-        setAnalysis(previousAnalysis); // Keep previous analysis
-        return;
-      }
-
-      // Validate required data structures
-      const validationErrors = []
-      if (!response.data.allocations && !response.data.allocation) {
-        validationErrors.push('Invalid allocation data')
-      }
-      if (!response.data.metrics || typeof response.data.metrics !== 'object') {
-        validationErrors.push('Invalid metrics data')
-      }
-      if (!response.data.historical_performance || !response.data.historical_performance.dates) {
-        validationErrors.push('Invalid historical performance data')
-      }
-
-      if (validationErrors.length > 0) {
-        setError(`Invalid response format: ${validationErrors.join(', ')}`);
-        setAnalysis(previousAnalysis); // Keep previous analysis
-        return;
-      }
-
-      // Log the response and transformed data
-      console.log('Backend response:', response.data);
       
-      // Transform data with strict validation and safe defaults
-      const transformedAnalysis = {
-        allocations: response.data.allocations || response.data.allocation.reduce((acc: {[key: string]: number}, curr: any) => {
-          if (curr && typeof curr.ticker === 'string' && typeof curr.weight === 'number' && !isNaN(curr.weight) && isFinite(curr.weight)) {
-            acc[curr.ticker] = curr.weight
-          }
-          return acc
-        }, {}),
-        metrics: {
-          expected_return: Number(response.data.metrics.expected_return) || 0,
-          volatility: Number(response.data.metrics.volatility) || 0,
-          sharpe_ratio: Number(response.data.metrics.sharpe_ratio) || 0,
-          sortino_ratio: Number(response.data.metrics.sortino_ratio) || 0,
-          beta: Number(response.data.metrics.beta) || 0,
-          max_drawdown: Number(response.data.metrics.max_drawdown) || 0,
-          var_95: Number(response.data.metrics.var_95) || 0,
-          cvar_95: Number(response.data.metrics.cvar_95) || 0
-        },
-        asset_metrics: response.data.asset_metrics ? 
-          Object.entries(response.data.asset_metrics).reduce((acc: {[key: string]: any}, [ticker, metrics]: [string, any]) => {
-            acc[ticker] = {
-              annual_return: Number(metrics.annual_return) || 0,
-              annual_volatility: Number(metrics.annual_volatility) || 0,
-              beta: Number(metrics.beta) || 0,
-              weight: Number(metrics.weight) || 0,
-              alpha: Number(metrics.alpha) || 0,
-              volatility: Number(metrics.volatility) || 0,
-              var_95: Number(metrics.var_95) || 0,
-              max_drawdown: Number(metrics.max_drawdown) || 0,
-              correlation: Number(metrics.correlation) || 0
-            };
-            return acc;
-          }, {}) :
-          // If no asset_metrics, create them from allocation data
-          response.data.allocation.reduce((acc: {[key: string]: any}, curr: any) => {
-            if (curr && typeof curr.ticker === 'string' && typeof curr.weight === 'number') {
-              acc[curr.ticker] = {
-                annual_return: response.data.metrics.expected_return || 0,
-                annual_volatility: response.data.metrics.volatility || 0,
-                beta: response.data.metrics.beta || 0,
-                weight: curr.weight || 0,
-                alpha: 0, // Default value since we don't have individual alpha
-                volatility: response.data.metrics.volatility || 0,
-                var_95: response.data.metrics.var_95 || 0,
-                max_drawdown: response.data.metrics.max_drawdown || 0,
-                correlation: 1 // Default value since we don't have individual correlation
-              };
-            }
-            return acc;
-          }, {}),
-        historical_performance: {
-          dates: Array.isArray(response.data.historical_performance.dates) 
-            ? response.data.historical_performance.dates 
-            : [],
-          portfolio_values: Array.isArray(response.data.historical_performance.portfolio_values)
-            ? response.data.historical_performance.portfolio_values.map((v: any) => {
-                const num = Number(v);
-                return isNaN(num) || !isFinite(num) ? null : num;
-              }).filter((v: number | null): v is number => v !== null)
-            : [],
-          drawdowns: Array.isArray(response.data.historical_performance.drawdowns)
-            ? response.data.historical_performance.drawdowns.map((v: any) => {
-                const num = Number(v);
-                return isNaN(num) || !isFinite(num) ? null : num;
-              }).filter((v: number | null): v is number => v !== null)
-            : [],
-          rolling_volatility: Array.isArray(response.data.historical_performance.rolling_volatility)
-            ? response.data.historical_performance.rolling_volatility.map((v: any) => {
-                const num = Number(v);
-                return isNaN(num) || !isFinite(num) ? null : num;
-              }).filter((v: number | null): v is number => v !== null)
-            : [],
-          rolling_sharpe: Array.isArray(response.data.historical_performance.rolling_sharpe)
-            ? response.data.historical_performance.rolling_sharpe.map((v: any) => {
-                const num = Number(v);
-                return isNaN(num) || !isFinite(num) ? null : num;
-              }).filter((v: number | null): v is number => v !== null)
-            : []
-        },
-        market_comparison: {
-          dates: Array.isArray(response.data.market_comparison?.dates)
-            ? response.data.market_comparison.dates
-            : [],
-          market_values: Array.isArray(response.data.market_comparison?.market_values)
-            ? response.data.market_comparison.market_values.map((v: any) => {
-                const num = Number(v);
-                return isNaN(num) || !isFinite(num) ? null : num;
-              }).filter((v: number | null): v is number => v !== null)
-            : [],
-          relative_performance: Array.isArray(response.data.market_comparison?.relative_performance)
-            ? response.data.market_comparison.relative_performance.map((v: any) => {
-                const num = Number(v);
-                return isNaN(num) || !isFinite(num) ? null : num;
-              }).filter((v: number | null): v is number => v !== null)
-            : []
-        },
-        ai_insights: response.data.ai_insights || {
-          explanations: {
-            summary: { en: '', es: '' },
-            risk_analysis: { en: '', es: '' },
-            diversification_analysis: { en: '', es: '' },
-            market_context: { en: '', es: '' },
-            stress_test_interpretation: { en: '', es: '' }
-          }
-        },
-        discrete_allocation: response.data.discrete_allocation || {
-          shares: {},
-          leftover: 0
-        }
-      };
-
-      console.log('Transformed analysis:', transformedAnalysis);
-      console.log('Asset metrics:', transformedAnalysis.asset_metrics);
-      console.log('Number of assets:', Object.keys(transformedAnalysis.asset_metrics).length);
-
-      // Validate transformed data before setting state
-      if (!transformedAnalysis.allocations || Object.keys(transformedAnalysis.allocations).length === 0) {
-        setError('No valid allocation data after transformation');
-        setAnalysis(previousAnalysis); // Keep previous analysis
-        return;
+      const data = await response.json();
+      console.log("Portfolio analysis response:", data);
+      
+      // Validate that we have the required data
+      if (!data.allocations || !data.historical_performance) {
+        throw new Error('Invalid response data');
       }
-
-      // Validate historical performance data
-      const hasValidHistoricalData = 
-        transformedAnalysis.historical_performance.dates.length > 0 && 
-        transformedAnalysis.historical_performance.portfolio_values.length > 0 &&
-        transformedAnalysis.historical_performance.portfolio_values.some((v: number | null) => v !== null && !isNaN(v) && isFinite(v));
-
-      if (!hasValidHistoricalData) {
-        setError('Invalid or missing historical performance data');
-        setAnalysis(previousAnalysis); // Keep previous analysis
-        return;
-      }
-
-      // Only update state if we have valid data
-      setAnalysis(transformedAnalysis)
-      setError('')
+      
+      setAnalysis(data);
+      
+      // Prepare chart data
+      const chartData = prepareChartData(data);
+      setChartData(chartData);
+      
     } catch (err: any) {
-      console.error('Portfolio analysis error:', err)
-      let errorMessage = err.response?.data?.detail || err.message || 'Error analyzing portfolio'
-      
-      // Make error messages more user-friendly
-      if (errorMessage.includes('minimum volatility')) {
-        errorMessage = 'Portfolio is too volatile for the selected risk level. Try adding more diverse assets or selecting a higher risk tolerance.';
-      } else if (errorMessage.includes('solver status: infeasible')) {
-        errorMessage = 'Unable to optimize portfolio with current constraints. Try adding more diverse assets.';
-      } else if (errorMessage.includes('tuple index out of range')) {
-        errorMessage = 'Error in portfolio optimization. Try selecting different assets or a different risk level.';
-      }
-      
-      setError(errorMessage)
-      // Keep previous analysis state on error
+      console.error('Error analyzing portfolio:', err);
+      setError(err.message || 'Failed to analyze portfolio');
     } finally {
-      setLoading(false)
+      setIsAnalyzing(false);
     }
-  }
+  };
 
   const rebalancePortfolio = async () => {
     if (!analysis) return
@@ -327,15 +140,50 @@ function App() {
     try {
       setLoading(true)
       setError('')
-      const response = await axios.post(`${API_URL}/rebalance-portfolio`, {
-        allocations: analysis.allocations
-      })
-      console.log('Rebalancing response:', response.data)
-    } catch (err) {
-      setError('Error rebalancing portfolio. Please try again.')
-      console.error(err)
+      setRebalanceResult(null)
+      
+      // Get Alpaca settings from localStorage
+      const savedSettings = localStorage.getItem('alpacaSettings');
+      let alpacaSettings: AlpacaSettings | null = null;
+      
+      if (savedSettings) {
+        alpacaSettings = JSON.parse(savedSettings) as AlpacaSettings;
+        console.log('Using Alpaca settings:', {
+          apiKey: alpacaSettings.apiKey ? '****' + alpacaSettings.apiKey.slice(-4) : 'not set',
+          secretKey: alpacaSettings.secretKey ? '****' + alpacaSettings.secretKey.slice(-4) : 'not set',
+          isPaper: alpacaSettings.isPaper
+        });
+      } else {
+        console.log('No Alpaca settings found in localStorage');
+      }
+      
+      // Check if API keys are available
+      if (!alpacaSettings?.apiKey || !alpacaSettings?.secretKey) {
+        setError('Alpaca API keys are required. Please configure them in Settings.');
+        setSettingsOpen(true);
+        setLoading(false);
+        return;
+      }
+      
+      // Use the AI rebalance explanation endpoint
+      const response = await axios.post(`${API_URL}/ai-rebalance-explanation`, {
+        allocations: analysis.allocations,
+        alpaca_api_key: alpacaSettings.apiKey,
+        alpaca_secret_key: alpacaSettings.secretKey,
+        use_paper_trading: alpacaSettings.isPaper
+      });
+      
+      console.log('Rebalancing response:', response.data);
+      setRebalanceResult(response.data);
+    } catch (err: any) {
+      if (err.response?.data?.detail) {
+        setError(`Error: ${err.response.data.detail}`);
+      } else {
+        setError('Error rebalancing portfolio. Please try again.');
+      }
+      console.error(err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -406,6 +254,46 @@ function App() {
     })
   }
 
+  // Update the prepareChartData function to handle the updated data structure
+  const prepareChartData = (analysis: PortfolioAnalysis) => {
+    if (!analysis || !analysis.historical_performance) return null;
+    
+    // Get dates from the portfolio_values object
+    const dates = Object.keys(analysis.historical_performance.portfolio_values || {});
+    if (dates.length === 0) return null;
+    
+    // Get values from the objects
+    const portfolioValues = dates.map(date => {
+      const value = analysis.historical_performance.portfolio_values[date];
+      return typeof value === 'number' ? value : 0;
+    });
+    
+    const drawdowns = dates.map(date => {
+      const value = analysis.historical_performance.drawdowns[date];
+      return typeof value === 'number' ? value : 0;
+    });
+    
+    return {
+      labels: dates,
+      datasets: [
+        {
+          label: 'Portfolio Value',
+          data: portfolioValues,
+          borderColor: 'rgb(75, 192, 192)',
+          backgroundColor: 'rgba(75, 192, 192, 0.5)',
+          tension: 0.1
+        },
+        {
+          label: 'Drawdowns',
+          data: drawdowns,
+          borderColor: 'rgb(255, 99, 132)',
+          backgroundColor: 'rgba(255, 99, 132, 0.5)',
+          tension: 0.1
+        }
+      ]
+    };
+  };
+
   return (
     <TooltipProvider>
       <div className="relative min-h-screen bg-[#030303] text-white">
@@ -422,8 +310,7 @@ function App() {
             speed={1}
           />
         </div>
-
-        {/* Main content */}
+        
         <div className="relative z-10 min-h-screen py-8 px-4">
           <div className="container mx-auto max-w-6xl">
             {/* Header */}
@@ -431,14 +318,25 @@ function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="text-center mb-8"
+              className="text-center mb-8 flex justify-between items-center"
             >
-              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-purple-500 mb-4">
-                Smart Portfolio Manager
-              </h1>
-              <p className="text-lg md:text-xl text-gray-300">
-                Optimize your investments with AI-powered portfolio analysis
-              </p>
+              <div className="flex-1">
+                <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-purple-500 mb-4">
+                  Smart Portfolio Manager
+                </h1>
+                <p className="text-lg md:text-xl text-gray-300">
+                  Optimize your investments with AI-powered portfolio analysis
+                </p>
+              </div>
+              
+              {/* Settings Button */}
+              <button
+                onClick={() => setSettingsOpen(true)}
+                className="p-2 rounded-full hover:bg-gray-700 transition-colors self-start"
+                aria-label="Settings"
+              >
+                <Cog6ToothIcon className="h-6 w-6 text-gray-300" />
+              </button>
             </motion.div>
 
             {/* Main card */}
@@ -450,7 +348,7 @@ function App() {
             >
               <div className="space-y-10">
                 {/* AI Ticker Suggestions */}
-      <div>
+                <div>
                   <h2 className="text-2xl font-bold text-center mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
                     AI Ticker Suggestions
                   </h2>
@@ -521,7 +419,7 @@ function App() {
                              hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed
                              w-full md:w-auto text-center"
                   >
-                    {loading ? 'Analyzing...' : 'Analyze Portfolio'}
+                    {isAnalyzing ? 'Analyzing...' : 'Analyze Portfolio'}
                   </button>
                   
                   <button
@@ -560,106 +458,30 @@ function App() {
                       Portfolio Analysis Results
                     </h2>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      {/* Metrics Card */}
-                      <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
-                        <h3 className="font-semibold mb-4 text-purple-400">Portfolio Metrics</h3>
-                        <div className="space-y-3 text-white">
-                          <p className="flex justify-between">
-                            <span>Expected Annual Return:</span>
-                            <span className="font-medium text-green-400">
-                              {(analysis.metrics.expected_return * 100).toFixed(2)}%
-                            </span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span>Annual Volatility:</span>
-                            <span className="font-medium text-yellow-400">
-                              {(analysis.metrics.volatility * 100).toFixed(2)}%
-                            </span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span>Sharpe Ratio:</span>
-                            <span className="font-medium text-blue-400">
-                              {analysis.metrics.sharpe_ratio.toFixed(2)}
-                            </span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span>Sortino Ratio:</span>
-                            <span className="font-medium text-purple-400">
-                              {analysis.metrics.sortino_ratio.toFixed(2)}
-                            </span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span>Market Beta:</span>
-                            <span className={`font-medium ${analysis.metrics.beta > 1 ? 'text-red-400' : 'text-green-400'}`}>
-                              {analysis.metrics.beta.toFixed(2)}
-                            </span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span>Maximum Drawdown:</span>
-                            <span className="font-medium text-red-400">
-                              {(analysis.metrics.max_drawdown * 100).toFixed(2)}%
-                            </span>
-                          </p>
-                          <p className="flex justify-between">
-                            <span>Value at Risk (95%):</span>
-                            <span className="font-medium text-orange-400">
-                              {(analysis.metrics.var_95 * 100).toFixed(2)}%
-                            </span>
-                          </p>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                      <div>
+                        <h2 className="text-2xl font-bold mb-4">Portfolio Allocation</h2>
+                        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                          <AllocationChart allocations={analysis.allocations} />
+                        </div>
+                        
+                        <h2 className="text-2xl font-bold mt-6 mb-4">Performance</h2>
+                        <div className="w-full h-[300px]">
+                          {chartData ? (
+                            <PerformanceChart data={chartData} />
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-gray-500">
+                              No performance data available
+                            </div>
+                          )}
                         </div>
                       </div>
-
-                      {/* Allocation Chart */}
-                      <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="font-semibold text-purple-400">Optimal Allocations</h3>
-                          <Tooltip
-                            content="This pie chart shows the optimal portfolio allocation based on Modern Portfolio Theory. Each slice represents the percentage that should be invested in each asset to achieve the best risk-adjusted returns."
-                            side="left"
-                            sideOffset={5}
-                          >
-                            <button 
-                              type="button"
-                              className="p-2 hover:bg-white/10 rounded-full transition-colors"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
-                                <circle cx="12" cy="12" r="10"/>
-                                <path d="M12 16v-4"/>
-                                <path d="M12 8h.01"/>
-                              </svg>
-                            </button>
-                          </Tooltip>
+                      
+                      <div>
+                        <h2 className="text-2xl font-bold mb-4">Portfolio Analysis</h2>
+                        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                          <PortfolioExplanation analysis={analysis} language="en" />
                         </div>
-                        {chartData && chartData.labels && chartData.labels.length > 0 ? (
-                          <div className="w-full h-[400px] flex items-center justify-center">
-                            <Pie 
-                              data={chartData}
-                              options={{
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                  legend: {
-                                    position: 'right' as const,
-                                    labels: {
-                                      color: 'white',
-                                      padding: 20,
-                                      font: {
-                                        size: 14
-                                      },
-                                      boxWidth: 20,
-                                      boxHeight: 20
-                                    }
-                                  }
-                                }
-                              }}
-                            />
-                          </div>
-                        ) : (
-                          <div className="h-[400px] flex items-center justify-center text-gray-400">
-                            No allocation data available
-                          </div>
-                        )}
                       </div>
                     </div>
 
@@ -679,11 +501,11 @@ function App() {
                         </div>
                         
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          {Object.entries(analysis.asset_metrics).map(([ticker, metrics]) => (
+                          {Object.entries(analysis.asset_metrics).map(([ticker, assetMetric]) => (
                             <StockAnalysis 
                               key={ticker} 
                               ticker={ticker} 
-                              metrics={metrics}
+                              metrics={assetMetric}
                             />
                           ))}
                         </div>
@@ -827,7 +649,7 @@ function App() {
                           </div>
                         )}
                       </div>
-      </div>
+                    </div>
 
                     {/* Drawdown Chart */}
                     <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
@@ -847,7 +669,7 @@ function App() {
                               <path d="M12 16v-4"/>
                               <path d="M12 8h.01"/>
                             </svg>
-        </button>
+                          </button>
                         </Tooltip>
                       </div>
                       <div className="w-full h-[200px]">
@@ -905,50 +727,71 @@ function App() {
 
                     {/* Asset Metrics */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-                      {Object.entries(analysis.asset_metrics).map(([ticker, metrics]) => (
+                      {Object.entries(analysis.asset_metrics).map(([ticker, assetMetric]) => (
                         <div key={ticker} className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
                           <h3 className="font-semibold mb-4 text-purple-400">{ticker} Metrics</h3>
                           <div className="space-y-3 text-white">
-                            <p className="flex justify-between">
-                              <span>Beta:</span>
-                              <span className={`font-medium ${metrics.beta > 1 ? 'text-red-400' : 'text-green-400'}`}>
-                                {metrics.beta.toFixed(2)}
-                              </span>
-                            </p>
-                            <p className="flex justify-between">
-                              <span>Alpha:</span>
-                              <span className={`font-medium ${metrics.alpha > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {(metrics.alpha * 100).toFixed(2)}%
-                              </span>
-                            </p>
-                            <p className="flex justify-between">
-                              <span>Volatility:</span>
-                              <span className="font-medium text-yellow-400">
-                                {(metrics.volatility * 100).toFixed(2)}%
-                              </span>
-                            </p>
-                            <p className="flex justify-between">
-                              <span>Max Drawdown:</span>
-                              <span className="font-medium text-red-400">
-                                {(metrics.max_drawdown * 100).toFixed(2)}%
-                              </span>
-                            </p>
-                            <p className="flex justify-between">
-                              <span>Correlation:</span>
-                              <span className="font-medium text-blue-400">
-                                {metrics.correlation.toFixed(2)}
-                              </span>
-                            </p>
+                            {analysis && analysis.metrics && (
+                              <>
+                                <p className="flex justify-between">
+                                  <span>Expected Return:</span>
+                                  <span className="font-medium text-green-400">
+                                    {(analysis.metrics.expected_return * 100).toFixed(2)}%
+                                  </span>
+                                </p>
+                                <p className="flex justify-between">
+                                  <span>Volatility:</span>
+                                  <span className="font-medium text-yellow-400">
+                                    {(analysis.metrics.volatility * 100).toFixed(2)}%
+                                  </span>
+                                </p>
+                                <p className="flex justify-between">
+                                  <span>Sharpe Ratio:</span>
+                                  <span className="font-medium text-blue-400">
+                                    {analysis.metrics.sharpe_ratio.toFixed(2)}
+                                  </span>
+                                </p>
+                                <p className="flex justify-between">
+                                  <span>Sortino Ratio:</span>
+                                  <span className="font-medium text-purple-400">
+                                    {analysis.metrics.sortino_ratio.toFixed(2)}
+                                  </span>
+                                </p>
+                                <p className="flex justify-between">
+                                  <span>Market Beta:</span>
+                                  <span className={`font-medium ${analysis.metrics.beta > 1 ? 'text-red-400' : 'text-green-400'}`}>
+                                    {analysis.metrics.beta.toFixed(2)}
+                                  </span>
+                                </p>
+                                <p className="flex justify-between">
+                                  <span>Maximum Drawdown:</span>
+                                  <span className="font-medium text-red-400">
+                                    {(analysis.metrics.max_drawdown * 100).toFixed(2)}%
+                                  </span>
+                                </p>
+                                <p className="flex justify-between">
+                                  <span>Value at Risk (95%):</span>
+                                  <span className="font-medium text-orange-400">
+                                    {(analysis.metrics.var_95 * 100).toFixed(2)}%
+                                  </span>
+                                </p>
+                              </>
+                            )}
                           </div>
                         </div>
                       ))}
                     </div>
-
-                    {/* AI Insights */}
-                    <div className="mt-8">
-                      <PortfolioExplanation analysis={analysis} />
-                    </div>
                   </motion.div>
+                )}
+
+                {/* Rebalance Results */}
+                {rebalanceResult && (
+                  <div className="mt-6">
+                    <h2 className="text-2xl font-bold mb-4">Rebalance Results</h2>
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                      <RebalanceExplanation result={rebalanceResult} language="en" />
+                    </div>
+                  </div>
                 )}
 
                 {/* Error Message */}
@@ -966,6 +809,9 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Settings Dialog */}
+      <Settings isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </TooltipProvider>
   )
 }

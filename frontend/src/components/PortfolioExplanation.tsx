@@ -1,3 +1,4 @@
+import React from 'react'
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -11,59 +12,61 @@ import {
 } from "./ui/dialog";
 import { PortfolioAnalysis } from "../types/portfolio";
 
-interface PortfolioExplanationProps {
-  analysis: PortfolioAnalysis;
+type PortfolioExplanationProps = {
+  analysis: PortfolioAnalysis
+  language?: 'en' | 'es'
 }
 
-export function PortfolioExplanation({ analysis }: PortfolioExplanationProps) {
-  const explanations = analysis.ai_insights?.explanations;
-  const metrics = analysis.metrics;
-
-  // Return null if no AI insights are available
-  if (!analysis.ai_insights || !explanations) return null;
-
-  // Format metrics for display
-  const formatMetric = (value: number, isPercentage = true) => {
+export function PortfolioExplanation({ analysis, language = 'en' }: PortfolioExplanationProps) {
+  const formatMetric = (value: number, isPercentage = false) => {
     return isPercentage ? `${(value * 100).toFixed(2)}%` : value.toFixed(2);
-  };
+  }
 
-  // Generate summary based on actual metrics
-  const generateSummary = () => {
-    const riskLevel = metrics.volatility > 0.3 ? "high" : metrics.volatility > 0.15 ? "moderate" : "low";
-    const performanceLevel = metrics.sharpe_ratio > 1.5 ? "strong" : metrics.sharpe_ratio > 1 ? "good" : "poor";
-    const diversificationLevel = analysis.allocations && Object.keys(analysis.allocations).length > 5 ? "well" : "poorly";
+  // Basic explanation without AI insights
+  const generateBasicExplanation = () => {
+    const metrics = analysis.metrics;
+    const diversificationLevel = Object.keys(analysis.allocations || {}).length > 3 ? 'well' : 'poorly';
+    const riskLevel = metrics.volatility < 0.15 ? 'low' : metrics.volatility < 0.25 ? 'moderate' : 'high';
+    const performanceLevel = metrics.sharpe_ratio > 1 ? 'good' : 'suboptimal';
     
-    return {
-      en: `Your portfolio shows ${riskLevel} risk with ${performanceLevel} risk-adjusted returns (Sharpe ratio: ${metrics.sharpe_ratio.toFixed(2)}). It is ${diversificationLevel} diversified across ${Object.keys(analysis.allocations || {}).length} assets. The expected annual return is ${formatMetric(metrics.expected_return)} with ${formatMetric(metrics.volatility)} volatility.`,
-      es: `Su portafolio muestra un riesgo ${riskLevel === 'high' ? 'alto' : riskLevel === 'moderate' ? 'moderado' : 'bajo'} con rendimientos ajustados por riesgo ${performanceLevel === 'strong' ? 'fuertes' : performanceLevel === 'good' ? 'buenos' : 'pobres'} (Ratio de Sharpe: ${metrics.sharpe_ratio.toFixed(2)}). Está ${diversificationLevel === 'well' ? 'bien' : 'pobremente'} diversificado entre ${Object.keys(analysis.allocations || {}).length} activos. El retorno anual esperado es ${formatMetric(metrics.expected_return)} con una volatilidad del ${formatMetric(metrics.volatility)}.`
+    const explanations = {
+      en: `Your portfolio shows ${riskLevel} risk with ${performanceLevel} risk-adjusted returns (Sharpe ratio: ${metrics.sharpe_ratio?.toFixed(2) || 'N/A'}). It is ${diversificationLevel} diversified across ${Object.keys(analysis.allocations || {}).length} assets. The expected annual return is ${formatMetric(metrics.expected_return, true)} with ${formatMetric(metrics.volatility, true)} volatility.`,
+      es: `Su cartera muestra un riesgo ${riskLevel === 'low' ? 'bajo' : riskLevel === 'moderate' ? 'moderado' : 'alto'} con rendimientos ajustados por riesgo ${performanceLevel === 'good' ? 'buenos' : 'subóptimos'} (Ratio de Sharpe: ${metrics.sharpe_ratio?.toFixed(2) || 'N/A'}). Está ${diversificationLevel === 'well' ? 'bien' : 'pobremente'} diversificado entre ${Object.keys(analysis.allocations || {}).length} activos. El retorno anual esperado es ${formatMetric(metrics.expected_return, true)} con una volatilidad de ${formatMetric(metrics.volatility, true)}.`
     };
-  };
-
-  // Generate risk analysis based on actual metrics
-  const generateRiskAnalysis = () => {
-    return {
-      en: `The portfolio has a Sharpe ratio of ${metrics.sharpe_ratio.toFixed(2)} and a Sortino ratio of ${metrics.sortino_ratio.toFixed(2)}, indicating ${metrics.sharpe_ratio > 1 ? 'good' : 'suboptimal'} risk-adjusted returns. Maximum drawdown is ${formatMetric(metrics.max_drawdown)}, with a market beta of ${metrics.beta.toFixed(2)}. Value at Risk (95%) suggests a maximum daily loss of ${formatMetric(metrics.var_95)} under normal market conditions.`,
-      es: `El portafolio tiene un ratio de Sharpe de ${metrics.sharpe_ratio.toFixed(2)} y un ratio de Sortino de ${metrics.sortino_ratio.toFixed(2)}, indicando rendimientos ajustados por riesgo ${metrics.sharpe_ratio > 1 ? 'buenos' : 'subóptimos'}. La máxima caída es del ${formatMetric(metrics.max_drawdown)}, con un beta de mercado de ${metrics.beta.toFixed(2)}. El Valor en Riesgo (95%) sugiere una pérdida diaria máxima del ${formatMetric(metrics.var_95)} en condiciones normales de mercado.`
+    
+    return explanations[language];
+  }
+  
+  // Risk explanation without AI insights
+  const generateRiskExplanation = () => {
+    const metrics = analysis.metrics;
+    
+    const explanations = {
+      en: `The portfolio has a Sharpe ratio of ${metrics.sharpe_ratio?.toFixed(2) || 'N/A'} and a Sortino ratio of ${metrics.sortino_ratio?.toFixed(2) || 'N/A'}, indicating ${metrics.sharpe_ratio && metrics.sharpe_ratio > 1 ? 'good' : 'suboptimal'} risk-adjusted returns. Maximum drawdown is ${formatMetric(metrics.max_drawdown, true)}, with a market beta of ${metrics.beta?.toFixed(2) || 'N/A'}. Value at Risk (95%) suggests a maximum daily loss of ${formatMetric(metrics.var_95, true)} under normal market conditions.`,
+      es: `El portafolio tiene un ratio de Sharpe de ${metrics.sharpe_ratio?.toFixed(2) || 'N/A'} y un ratio de Sortino de ${metrics.sortino_ratio?.toFixed(2) || 'N/A'}, indicando rendimientos ajustados por riesgo ${metrics.sharpe_ratio && metrics.sharpe_ratio > 1 ? 'buenos' : 'subóptimos'}. La máxima caída es del ${formatMetric(metrics.max_drawdown, true)}, con un beta de mercado de ${metrics.beta?.toFixed(2) || 'N/A'}. El Valor en Riesgo (95%) sugiere una pérdida diaria máxima del ${formatMetric(metrics.var_95, true)} en condiciones normales de mercado.`
     };
-  };
-
-  // Ensure all required sections exist with actual data
-  const sections = {
-    summary: generateSummary(),
-    risk_analysis: generateRiskAnalysis(),
-    diversification_analysis: explanations.diversification_analysis || {
-      en: `Portfolio consists of ${Object.keys(analysis.allocations || {}).length} assets with varying weights.`,
-      es: `El portafolio consiste en ${Object.keys(analysis.allocations || {}).length} activos con pesos variables.`
-    },
-    market_context: explanations.market_context || {
-      en: 'Current market conditions and implications for the portfolio.',
-      es: 'Condiciones actuales del mercado e implicaciones para el portafolio.'
-    },
-    stress_test_interpretation: {
-      en: `Under stress scenarios, the portfolio's Value at Risk (95%) is ${formatMetric(metrics.var_95)}, indicating potential losses in extreme market conditions.`,
-      es: `Bajo escenarios de estrés, el Valor en Riesgo del portafolio (95%) es ${formatMetric(metrics.var_95)}, indicando pérdidas potenciales en condiciones extremas de mercado.`
-    }
-  };
+    
+    return explanations[language];
+  }
+  
+  // Check if AI insights are available
+  const hasAiInsights = analysis.ai_insights && 
+                       !analysis.ai_insights.error;
+  
+  // Get AI explanations if available
+  const aiExplanations = hasAiInsights ? 
+    analysis.ai_insights?.explanations?.[language === 'en' ? 'english' : 'spanish'] : 
+    null;
+  
+  // Get AI recommendations if available
+  const aiRecommendations = hasAiInsights ?
+    analysis.ai_insights?.recommendations || [] :
+    [];
+  
+  // Get market outlook if available
+  const marketOutlook = hasAiInsights ?
+    analysis.ai_insights?.market_outlook || {} :
+    null;
 
   return (
     <Dialog>
@@ -84,50 +87,72 @@ export function PortfolioExplanation({ analysis }: PortfolioExplanationProps) {
           </DialogHeader>
 
           <div className="p-6 space-y-6">
-            {/* Summary Section */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-purple-400">Summary</h3>
-              <div className="bg-white/5 rounded-lg p-4 space-y-2">
-                <p className="text-white">{sections.summary.en}</p>
-                <p className="text-gray-400 italic">{sections.summary.es}</p>
-              </div>
+            <div>
+              <h3 className="text-xl font-semibold mb-2">Portfolio Summary</h3>
+              <p className="text-gray-600 dark:text-gray-300">
+                {hasAiInsights && aiExplanations?.summary ? 
+                  aiExplanations.summary : 
+                  generateBasicExplanation()}
+              </p>
             </div>
-
-            {/* Risk Analysis Section */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-purple-400">Risk Analysis</h3>
-              <div className="bg-white/5 rounded-lg p-4 space-y-2">
-                <p className="text-white">{sections.risk_analysis.en}</p>
-                <p className="text-gray-400 italic">{sections.risk_analysis.es}</p>
-              </div>
+            
+            <div>
+              <h3 className="text-xl font-semibold mb-2">Risk Analysis</h3>
+              <p className="text-gray-600 dark:text-gray-300">
+                {hasAiInsights && aiExplanations?.risk_analysis ? 
+                  aiExplanations.risk_analysis : 
+                  generateRiskExplanation()}
+              </p>
             </div>
-
-            {/* Diversification Analysis Section */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-purple-400">Diversification Analysis</h3>
-              <div className="bg-white/5 rounded-lg p-4 space-y-2">
-                <p className="text-white">{sections.diversification_analysis.en}</p>
-                <p className="text-gray-400 italic">{sections.diversification_analysis.es}</p>
+            
+            {hasAiInsights && aiExplanations?.diversification_analysis && (
+              <div>
+                <h3 className="text-xl font-semibold mb-2">Diversification Analysis</h3>
+                <p className="text-gray-600 dark:text-gray-300">
+                  {aiExplanations.diversification_analysis}
+                </p>
               </div>
-            </div>
-
-            {/* Market Context Section */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-purple-400">Market Context</h3>
-              <div className="bg-white/5 rounded-lg p-4 space-y-2">
-                <p className="text-white">{sections.market_context.en}</p>
-                <p className="text-gray-400 italic">{sections.market_context.es}</p>
+            )}
+            
+            {hasAiInsights && aiExplanations?.market_analysis && (
+              <div>
+                <h3 className="text-xl font-semibold mb-2">Market Analysis</h3>
+                <p className="text-gray-600 dark:text-gray-300">
+                  {aiExplanations.market_analysis}
+                </p>
               </div>
-            </div>
-
-            {/* Stress Test Interpretation Section */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-purple-400">Stress Test Analysis</h3>
-              <div className="bg-white/5 rounded-lg p-4 space-y-2">
-                <p className="text-white">{sections.stress_test_interpretation.en}</p>
-                <p className="text-gray-400 italic">{sections.stress_test_interpretation.es}</p>
+            )}
+            
+            {hasAiInsights && aiRecommendations.length > 0 && (
+              <div>
+                <h3 className="text-xl font-semibold mb-2">Recommendations</h3>
+                <ul className="list-disc pl-5 space-y-1 text-gray-600 dark:text-gray-300">
+                  {aiRecommendations.map((rec, index) => (
+                    <li key={index}>{rec}</li>
+                  ))}
+                </ul>
               </div>
-            </div>
+            )}
+            
+            {hasAiInsights && marketOutlook && (
+              <div>
+                <h3 className="text-xl font-semibold mb-2">Market Outlook</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
+                    <h4 className="font-medium mb-1">Short Term</h4>
+                    <p className="text-sm">{marketOutlook.short_term || 'No data available'}</p>
+                  </div>
+                  <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
+                    <h4 className="font-medium mb-1">Medium Term</h4>
+                    <p className="text-sm">{marketOutlook.medium_term || 'No data available'}</p>
+                  </div>
+                  <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
+                    <h4 className="font-medium mb-1">Long Term</h4>
+                    <p className="text-sm">{marketOutlook.long_term || 'No data available'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

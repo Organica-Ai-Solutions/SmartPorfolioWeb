@@ -4,7 +4,7 @@ export interface Portfolio {
     name?: string;
     tickers: string[];
     start_date: string;
-    risk_tolerance: 'low' | 'medium' | 'high';
+    risk_tolerance: string;
     created_at?: string;
     updated_at?: string;
 }
@@ -24,12 +24,12 @@ export interface AssetMetrics {
     annual_return: number;
     annual_volatility: number;
     beta: number;
-    weight: number;
-    alpha: number;
-    volatility: number;
-    var_95: number;
-    max_drawdown: number;
     correlation: number;
+    weight: number;
+    alpha?: number;
+    volatility?: number;
+    var_95?: number;
+    max_drawdown?: number;
 }
 
 export interface TechnicalIndicators {
@@ -82,81 +82,75 @@ export interface MarketAnalysis {
 }
 
 export interface PortfolioAnalysis {
-    allocations: { [key: string]: number };
+    allocations: Record<string, number>;
     metrics: PortfolioMetrics;
-    asset_metrics: { [key: string]: AssetMetrics };
-    discrete_allocation: {
-        shares: { [key: string]: number };
-        leftover: number;
-    };
+    asset_metrics: Record<string, AssetMetrics>;
+    discrete_allocation: Record<string, number>;
     historical_performance: {
-        dates: string[];
-        portfolio_values: number[];
-        drawdowns: number[];
-        rolling_volatility: number[];
-        rolling_sharpe: number[];
+        portfolio_values: Record<string, number>;
+        drawdowns: Record<string, number>;
+        dates?: string[];
+        rolling_volatility?: number[];
     };
-    market_comparison: {
+    market_comparison?: {
         dates: string[];
         market_values: number[];
         relative_performance: number[];
     };
     ai_insights?: {
-        portfolio_analysis: {
-            risk_metrics: any;
-            diversification_metrics: any;
-        };
-        market_analysis: any;
-        risk_analysis: any;
-        explanations: {
-            summary: {
-                en: string;
-                es: string;
+        error?: string;
+        explanations?: {
+            english?: {
+                summary: string;
+                risk_analysis: string;
+                diversification_analysis: string;
+                market_analysis: string;
             };
-            risk_analysis: {
-                en: string;
-                es: string;
-            };
-            diversification_analysis: {
-                en: string;
-                es: string;
-            };
-            market_context: {
-                en: string;
-                es: string;
-            };
-            stress_test_interpretation: {
-                en: string;
-                es: string;
+            spanish?: {
+                summary: string;
+                risk_analysis: string;
+                diversification_analysis: string;
+                market_analysis: string;
             };
         };
-        recommendations: string[];
-        market_outlook: {
-            short_term: string;
-            medium_term: string;
-            long_term: string;
-            key_drivers: string[];
+        recommendations?: string[];
+        market_outlook?: {
+            short_term?: string;
+            medium_term?: string;
+            long_term?: string;
         };
     };
-    market_analysis?: MarketAnalysis;
 }
 
 export interface Order {
     symbol: string;
     qty: number;
-    side: 'buy' | 'sell';
-    status?: 'executed' | 'failed';
-    order_id?: string;
-    error?: string;
+    side: string;
+    status: string;
+    order_id: string;
+}
+
+export interface AccountBalance {
+    equity: number;
+    cash: number;
+    buying_power: number;
 }
 
 export interface RebalanceResult {
     message: string;
     orders: Order[];
-    account_balance: {
-        equity: number;
-        cash: number;
-        buying_power: number;
+    account_balance: AccountBalance;
+    ai_insights?: {
+        error?: string;
+        explanation?: {
+            english: string;
+            spanish: string;
+        };
+        recommendations?: string[];
+        market_impact?: {
+            summary: string;
+            factors: string[];
+        };
     };
 }
 

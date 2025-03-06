@@ -6,6 +6,7 @@ from datetime import datetime
 import httpx
 import numpy as np
 from cryptography.fernet import Fernet
+import logging
 
 class AIAdvisorService:
     def __init__(self):
@@ -366,6 +367,9 @@ class AIAdvisorService:
         try:
             market_returns = self._get_benchmark_returns(returns.shape[0])
             covariance = np.cov(returns, market_returns)[0,1]
+            # Check for NaN or infinite values
+            if np.isnan(covariance) or np.isinf(covariance):
+                covariance = 0
             market_variance = np.var(market_returns)
             return float(covariance / market_variance if market_variance != 0 else 1.0)
         except Exception:
@@ -731,4 +735,38 @@ class AIAdvisorService:
         elif regime == 'bull_market':
             return "hay oportunidades de crecimiento pero se debe mantener vigilancia ante señales de exceso"
         else:
-            return f"un entorno con tendencia {self._translate_trend_strength(trend)} y niveles de volatilidad {self._translate_volatility_regime(volatility)}" 
+            return f"un entorno con tendencia {self._translate_trend_strength(trend)} y niveles de volatilidad {self._translate_volatility_regime(volatility)}"
+
+    def calculate_beta(self, returns):
+        """Calculate the beta of the returns against a market benchmark."""
+        try:
+            market_returns = self._get_benchmark_returns(returns.shape[0])
+            
+            # Ensure we have enough data points
+            if len(returns) < 2 or len(market_returns) < 2:
+                return 1.0
+            
+            try:
+                covariance = np.cov(returns, market_returns)[0,1]
+                # Check for NaN or infinite values
+                if np.isnan(covariance) or np.isinf(covariance):
+                    covariance = 0
+            except (ValueError, IndexError, ZeroDivisionError):
+                covariance = 0
+            
+            market_variance = np.var(market_returns)
+            
+            # Avoid division by zero
+            if market_variance == 0 or np.isnan(market_variance) or np.isinf(market_variance):
+                return 1.0
+            
+            beta = float(covariance / market_variance)
+            
+            # Sanity check on beta value
+            if np.isnan(beta) or np.isinf(beta) or abs(beta) > 10:
+                return 1.0
+            
+            return beta
+        except Exception as e:
+            logging.error(f"Error calculating beta: {str(e)}")
+            return 1.0  # Default to market beta 
