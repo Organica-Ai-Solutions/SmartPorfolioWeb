@@ -29,7 +29,8 @@ ChartJS.register(
   Filler
 )
 
-const API_URL = 'http://localhost:8001'
+// Update the API_URL to use a relative path or environment variable
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001'
 
 type TimePeriod = '3m' | '6m' | '1y' | '5y' | 'max'
 
