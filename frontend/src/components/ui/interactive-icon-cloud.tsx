@@ -11,7 +11,7 @@ import {
 } from "react-icon-cloud"
 
 // Update version in the URL when fetching icons
-const SIMPLE_ICONS_VERSION = "14.0.0" // Match the version being used by the system
+const SIMPLE_ICONS_VERSION = "14.8.0" // Update to latest version that should have more icons
 
 export const cloudProps: Omit<ICloud, "children"> = {
   containerProps: {
@@ -62,14 +62,10 @@ const tickerToSlug: Record<string, string> = {
   // Tech Companies
   AAPL: "apple",
   GOOGL: "google",
-  MSFT: "microsoft",
-  AMZN: "amazonaws",
   META: "facebook",
   NFLX: "netflix",
   TSLA: "tesla",
   NVDA: "nvidia",
-  ADBE: "adobe",
-  ORCL: "oracle",
   CSCO: "cisco",
   IBM: "ibm",
   INTC: "intel",
@@ -93,16 +89,11 @@ const tickerToSlug: Record<string, string> = {
   CRWD: "crowdstrike",
   
   // Consumer & Social Media
-  DIS: "disney",
   SBUX: "starbucks",
   ABNB: "airbnb",
-  PG: "procter-and-gamble",
-  KO: "coca-cola",
-  PEP: "pepsi",
   MCD: "mcdonalds",
   WMT: "walmart",
   TGT: "target",
-  COST: "costco",
   NKE: "nike",
   LEVI: "levis",
   UAA: "underarmour",
@@ -113,21 +104,12 @@ const tickerToSlug: Record<string, string> = {
   ADS: "adidas",
   
   // Financial & Payment
-  JPM: "jpmorgan",
   V: "visa",
   MA: "mastercard",
   PYPL: "paypal",
-  MS: "morgan-stanley",
-  GS: "goldman-sachs",
-  BAC: "bank-of-america",
-  C: "citigroup",
-  WFC: "wells-fargo",
-  AXP: "american-express",
   SQ: "square",
   COIN: "coinbase",
   HOOD: "robinhood",
-  SCHW: "charles-schwab",
-  BLK: "blackrock",
   SOFI: "sofi",
   WU: "westernunion",
   AFRM: "affirm",
@@ -261,15 +243,11 @@ const tickerToSlug: Record<string, string> = {
   "SOL-USD": "solana",
   "ADA-USD": "cardano",
   "DOT-USD": "polkadot",
-  "AVAX-USD": "avalancheavax",
   "MATIC-USD": "polygon",
   "LINK-USD": "chainlink",
   "XRP-USD": "xrp",
   "DOGE-USD": "dogecoin",
   "SHIB-USD": "shibainu",
-  "UNI-USD": "uniswap",
-  "AAVE-USD": "aave",
-  "ATOM-USD": "cosmos",
   "ALGO-USD": "algorand",
   "FTM-USD": "fantom",
   "NEAR-USD": "near",
@@ -370,14 +348,18 @@ export function IconCloud({ tickers, onTickerSelect }: DynamicCloudProps) {
   const { theme } = useTheme()
 
   useEffect(() => {
+    // We've already removed problematic icons from the tickerToSlug mapping
+    
     const slugs = tickers
       .filter(ticker => {
         // Check if the ticker exists in our mapping
         const hasMapping = tickerToSlug[ticker];
         if (!hasMapping) {
           console.debug(`No icon mapping found for ticker: ${ticker}`);
+          return false;
         }
-        return hasMapping;
+        
+        return true;
       })
       .map(ticker => {
         const slug = tickerToSlug[ticker];
