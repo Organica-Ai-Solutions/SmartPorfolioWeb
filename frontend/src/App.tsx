@@ -93,11 +93,16 @@ const getStartDate = (period: TimePeriod): string => {
 }
 
 function App() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [stockData, setStockData] = useState<StockDataType[]>([]);
+  
+  // Ensure start_date is initialized properly with today's date as fallback
+  const today = new Date().toISOString().split('T')[0];
+  const defaultStartDate = getStartDate('1y');
+  
   const [portfolio, setPortfolio] = useState<Portfolio>({
     tickers: [],
-    start_date: getStartDate('1y'), // Default to 1 year
+    start_date: defaultStartDate, // Default to 1 year
     risk_tolerance: 'medium'
   });
   const [activeTab, setActiveTab] = useState('portfolio');
@@ -108,6 +113,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [rebalanceResult, setRebalanceResult] = useState<RebalanceResult | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+
+  console.log("Portfolio state initialized:", portfolio);
 
   const addTicker = (ticker: string) => {
     if (ticker && !portfolio.tickers.includes(ticker.toUpperCase())) {
@@ -286,10 +293,18 @@ function App() {
 
   // Handler for period change
   const handlePeriodChange = (period: TimePeriod) => {
+    const newStartDate = getStartDate(period);
+    console.log(`Setting new start date: ${newStartDate} for period: ${period}`);
+    
     setPortfolio({
       ...portfolio,
-      start_date: getStartDate(period)
-    })
+      start_date: newStartDate
+    });
+    
+    // Debug after state update
+    setTimeout(() => {
+      console.log("Portfolio after period change:", portfolio);
+    }, 100);
   }
 
   // Update the prepareChartData function to handle the updated data structure
@@ -421,7 +436,7 @@ function App() {
                 </div>
 
               {activeTab === 'portfolio' && (
-                <div>
+      <div>
                   {/* Portfolio Management Section */}
                   <div className="mb-6">
                     <h2 className="text-2xl font-bold mb-4">Portfolio Management</h2>
@@ -437,21 +452,21 @@ function App() {
                       <div className="flex flex-wrap gap-2">
                         {portfolio.tickers.map(ticker => (
                           <div 
-                            key={ticker}
+                        key={ticker}
                             className="bg-slate-700 px-3 py-1 rounded-full flex items-center gap-2"
                           >
                             <span>{ticker}</span>
-                            <button 
-                              onClick={() => removeTicker(ticker)}
+                        <button
+                          onClick={() => removeTicker(ticker)}
                               className="text-slate-400 hover:text-white"
-                            >
+                        >
                               &times;
-                            </button>
+                        </button>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                    
+                    ))}
+                  </div>
+                </div>
+
                     {/* Risk Tolerance */}
                     <div className="mb-4">
                       <h3 className="text-xl font-semibold mb-2">Risk Tolerance</h3>
@@ -464,12 +479,12 @@ function App() {
                         <option value="medium">Medium</option>
                         <option value="high">High</option>
                       </select>
-                    </div>
-                    
+                  </div>
+
                     {/* Analysis Period */}
                     <div className="mb-4">
                       <h3 className="text-xl font-semibold mb-2">Analysis Period</h3>
-                      <select
+                  <select
                         onChange={(e) => handlePeriodChange(e.target.value as TimePeriod)}
                         className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 w-full"
                       >
@@ -478,14 +493,22 @@ function App() {
                         <option value="1y" selected>1 Year</option>
                         <option value="5y">5 Years</option>
                         <option value="max">Max</option>
-                      </select>
-                    </div>
-                    
+                  </select>
+                </div>
+
                     {/* Analyze Button */}
                     <div className="mb-4 flex flex-col md:flex-row gap-4">
+                      {/* Debug info for button state */}
+                      <div className="mb-2 p-2 bg-blue-900/30 rounded-lg text-xs">
+                        <p>Debug: Tickers: {portfolio.tickers.length > 0 ? portfolio.tickers.join(', ') : 'None'}</p>
+                        <p>Start date: {portfolio.start_date || 'Not set'}</p>
+                        <p>Loading: {loading ? 'Yes' : 'No'}</p>
+                        <p>Button should be enabled: {!(loading || portfolio.tickers.length === 0) ? 'Yes' : 'No'}</p>
+                      </div>
+                      
                       <button
                         onClick={analyzePortfolio}
-                        disabled={loading || portfolio.tickers.length === 0 || !portfolio.start_date}
+                        disabled={loading || portfolio.tickers.length === 0}
                         className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isAnalyzing ? 'Analyzing...' : 'Analyze Portfolio'}
@@ -499,12 +522,12 @@ function App() {
                         {loading ? 'Rebalancing...' : 'Rebalance Portfolio'}
                       </button>
                     </div>
-                    
+
                     {/* Error Message */}
                     {error && (
                       <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
                         {error}
-                      </div>
+                    </div>
                     )}
                   </div>
                   
@@ -518,9 +541,9 @@ function App() {
                         <p className="font-medium">Analysis data loaded successfully!</p>
                         <p>Keys: {Object.keys(analysis).join(', ')}</p>
                       </div>
-                      
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        {/* Allocation Chart */}
+                      {/* Allocation Chart */}
                         <div className="bg-slate-800 p-4 rounded-lg">
                           <h3 className="text-xl font-semibold mb-4">Asset Allocation</h3>
                           <AllocationChart allocations={analysis.allocations} />
@@ -548,7 +571,7 @@ function App() {
                           <div className="bg-slate-700 p-3 rounded-lg">
                             <div className="text-slate-400 text-sm">Volatility</div>
                             <div className="text-xl font-bold">{(analysis.metrics.volatility * 100).toFixed(2)}%</div>
-                          </div>
+                      </div>
                           <div className="bg-slate-700 p-3 rounded-lg">
                             <div className="text-slate-400 text-sm">Sharpe Ratio</div>
                             <div className="text-xl font-bold">{analysis.metrics.sharpe_ratio.toFixed(2)}</div>
@@ -556,11 +579,11 @@ function App() {
                           <div className="bg-slate-700 p-3 rounded-lg">
                             <div className="text-slate-400 text-sm">Max Drawdown</div>
                             <div className="text-xl font-bold">{(analysis.metrics.max_drawdown * 100).toFixed(2)}%</div>
-                          </div>
-                        </div>
                       </div>
-                      
-                      {/* Asset Metrics */}
+                      </div>
+                    </div>
+
+                    {/* Asset Metrics */}
                       <div className="bg-slate-800 p-4 rounded-lg mb-6">
                         <h3 className="text-xl font-semibold mb-4">Asset Details</h3>
                         <div className="overflow-x-auto">
@@ -574,7 +597,7 @@ function App() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-700">
-                              {Object.entries(analysis.asset_metrics).map(([ticker, metrics]) => (
+                      {Object.entries(analysis.asset_metrics).map(([ticker, metrics]) => (
                                 <tr key={ticker}>
                                   <td className="px-4 py-2 font-medium">{ticker}</td>
                                   <td className="px-4 py-2">{(metrics.weight * 100).toFixed(2)}%</td>
@@ -585,10 +608,10 @@ function App() {
                             </tbody>
                           </table>
                         </div>
-                      </div>
                     </div>
-                  )}
-                </div>
+                    </div>
+                )}
+              </div>
               )}
               {activeTab === 'watchlist' && <WatchlistTab stockData={stockData} />}
             </motion.div>
