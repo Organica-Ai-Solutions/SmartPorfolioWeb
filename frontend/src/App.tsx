@@ -96,11 +96,23 @@ function App() {
 
   const analyzePortfolio = async () => {
     try {
+      console.log("analyzePortfolio function called");
+      console.log("Current portfolio state:", portfolio);
+      
+      // Check if portfolio has tickers
+      if (!portfolio.tickers || portfolio.tickers.length === 0) {
+        console.error("No tickers in portfolio");
+        setError('Please add at least one ticker to your portfolio');
+        return;
+      }
+      
       setIsAnalyzing(true);
       setError('');
       
       console.log("Analyzing portfolio with tickers:", portfolio.tickers);
+      console.log("API URL being used:", API_URL);
       
+      console.log("Making fetch request to:", `${API_URL}/ai-portfolio-analysis`);
       const response = await fetch(`${API_URL}/ai-portfolio-analysis`, {
         method: 'POST',
         headers: {
@@ -113,8 +125,11 @@ function App() {
         }),
       });
       
+      console.log("Fetch response received:", response);
+      
       if (!response.ok) {
         const errorData = await response.json();
+        console.error("API error response:", errorData);
         throw new Error(errorData.detail || 'Failed to analyze portfolio');
       }
       
@@ -123,13 +138,17 @@ function App() {
       
       // Validate that we have the required data
       if (!data.allocations || !data.historical_performance) {
+        console.error("Invalid response data - missing allocations or historical_performance");
         throw new Error('Invalid response data');
       }
       
+      console.log("Setting analysis state with data:", data);
       setAnalysis(data);
       
       // Prepare chart data
+      console.log("Preparing chart data");
       const chartData = prepareChartData(data);
+      console.log("Chart data prepared:", chartData);
       setChartData(chartData);
       
     } catch (err: any) {
@@ -371,7 +390,7 @@ function App() {
             >
               <div className="space-y-10">
                 {/* AI Ticker Suggestions */}
-                <div>
+      <div>
                   <h2 className="text-2xl font-bold text-center mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
                     AI Ticker Suggestions
                   </h2>
@@ -436,27 +455,39 @@ function App() {
                 {/* Action Buttons */}
                 <div className="flex flex-col md:flex-row gap-4 justify-center">
                   <button
-                    onClick={analyzePortfolio}
+                    onClick={(e) => {
+                      console.log('Analyze button clicked', e);
+                      console.log('Button disabled state:', loading || portfolio.tickers.length === 0 || !portfolio.start_date);
+                      console.log('Portfolio tickers:', portfolio.tickers);
+                      console.log('Portfolio start_date:', portfolio.start_date);
+                      console.log('Loading state:', loading);
+                      analyzePortfolio();
+                    }}
                     disabled={loading || portfolio.tickers.length === 0 || !portfolio.start_date}
                     className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg font-medium 
-                              hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed
-                              w-full md:w-auto text-center"
+                             hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed
+                             w-full md:w-auto text-center"
                   >
                     {isAnalyzing ? 'Analyzing...' : 'Analyze Portfolio'}
                   </button>
                   
                   <button
                     onClick={rebalancePortfolio}
-                    disabled={loading || !analysis}
-                    className="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-medium 
-                              hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed
-                              w-full md:w-auto text-center"
+                    disabled={!analysis || loading}
+                    className="px-8 py-4 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg font-medium 
+                             hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed
+                             w-full md:w-auto text-center"
                   >
                     {loading ? 'Rebalancing...' : 'Rebalance Portfolio'}
                   </button>
                 </div>
-
-                {/* Rest of the original content continues... */}
+                
+                {/* Error Message Display */}
+                {error && (
+                  <div className="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                    <p className="font-medium">Error: {error}</p>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
