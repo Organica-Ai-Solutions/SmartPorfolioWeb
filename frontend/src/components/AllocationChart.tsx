@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 
@@ -13,9 +13,9 @@ export function AllocationChart({ allocations }: AllocationChartProps) {
   const generateColors = (count: number) => {
     const baseColors = [
       'hsl(348, 83%, 47%)',   // Red
-      'hsl(120, 73%, 35%)',   // Green
-      'hsl(260, 73%, 45%)',   // Purple
-      'hsl(217, 85%, 55%)',   // Blue
+      'hsl(120, 73%, 45%)',   // Green
+      'hsl(260, 73%, 55%)',   // Purple
+      'hsl(217, 85%, 60%)',   // Blue
       'hsl(39, 100%, 50%)',   // Yellow
       'hsl(180, 73%, 45%)',   // Teal
       'hsl(288, 59%, 58%)',   // Pink
@@ -29,34 +29,42 @@ export function AllocationChart({ allocations }: AllocationChartProps) {
     return colors;
   };
 
-  // Format percentage values for display
-  const formatPercentages = (values: number[]) => {
-    // Ensure values sum to 100%
-    const sum = values.reduce((acc, val) => acc + val, 0);
-    return values.map(value => (value / sum) * 100);
+  // Convert allocations to percentage values (0-100)
+  const convertToPercentages = (allocData: Record<string, number>) => {
+    // Convert directly to percentage (multiply by 100)
+    return Object.entries(allocData).map(([ticker, value]) => ({
+      ticker,
+      percentage: value * 100
+    }));
   };
 
-  // Log the allocations to verify they're different
-  console.log("Allocation values:", Object.entries(allocations || {}).map(([ticker, value]) => `${ticker}: ${(value * 100).toFixed(2)}%`));
-  
+  useEffect(() => {
+    // Log allocations for debugging
+    console.log("Raw allocations:", allocations);
+    if (allocations) {
+      const percentages = convertToPercentages(allocations);
+      console.log("Percentages:", percentages);
+    }
+  }, [allocations]);
+
   // Prepare data for the chart
   const tickers = Object.keys(allocations || {});
-  const values = tickers.map(ticker => allocations[ticker]);
+  const values = Object.values(allocations || {}).map(val => val * 100); // Direct percentages
   const backgroundColor = generateColors(tickers.length);
-  const percentageValues = formatPercentages(values);
   
   const chartData = {
     labels: tickers,
     datasets: [
       {
-        data: percentageValues,
+        data: values,
         backgroundColor,
         borderColor: backgroundColor.map(color => color.replace(')', ', 0.8)')),
-        borderWidth: 1,
+        borderWidth: 2,
       },
     ],
   };
 
+  // Display percentages directly on the chart
   const options = {
     responsive: true,
     maintainAspectRatio: false,
@@ -65,7 +73,7 @@ export function AllocationChart({ allocations }: AllocationChartProps) {
         position: 'right' as const,
         labels: {
           font: {
-            size: 12,
+            size: 14,
             weight: 'bold' as const,
           },
           padding: 15,
@@ -82,7 +90,7 @@ export function AllocationChart({ allocations }: AllocationChartProps) {
             return `${label}: ${value.toFixed(1)}%`;
           },
         },
-        backgroundColor: 'rgba(20, 20, 20, 0.9)',
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
         titleColor: 'white',
         bodyColor: 'white',
         titleFont: {
@@ -98,8 +106,8 @@ export function AllocationChart({ allocations }: AllocationChartProps) {
       },
     },
     // Add these settings to emphasize the sections
-    cutout: '10%',  // Slightly less cutout to show more of the pie
-    radius: '90%',  // Larger radius
+    cutout: '0%',  // No cutout (full pie)
+    radius: '90%', // Larger radius
     animation: {
       animateRotate: true,
       animateScale: true
