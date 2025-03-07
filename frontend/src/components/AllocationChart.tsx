@@ -31,9 +31,14 @@ export function AllocationChart({ allocations }: AllocationChartProps) {
 
   // Format percentage values for display
   const formatPercentages = (values: number[]) => {
-    return values.map(value => value * 100);
+    // Ensure values sum to 100%
+    const sum = values.reduce((acc, val) => acc + val, 0);
+    return values.map(value => (value / sum) * 100);
   };
 
+  // Log the allocations to verify they're different
+  console.log("Allocation values:", Object.entries(allocations || {}).map(([ticker, value]) => `${ticker}: ${(value * 100).toFixed(2)}%`));
+  
   // Prepare data for the chart
   const tickers = Object.keys(allocations || {});
   const values = tickers.map(ticker => allocations[ticker]);
@@ -91,6 +96,13 @@ export function AllocationChart({ allocations }: AllocationChartProps) {
         padding: 10,
         cornerRadius: 4,
       },
+    },
+    // Add these settings to emphasize the sections
+    cutout: '10%',  // Slightly less cutout to show more of the pie
+    radius: '90%',  // Larger radius
+    animation: {
+      animateRotate: true,
+      animateScale: true
     },
   };
 
