@@ -11,6 +11,15 @@ import {
   DialogTrigger,
 } from "./ui/dialog";
 import { PortfolioAnalysis } from "../types/portfolio";
+import { motion } from 'framer-motion';
+import { 
+  ChartBarIcon, 
+  ShieldExclamationIcon,
+  ArrowPathIcon,
+  GlobeAmericasIcon,
+  LightBulbIcon,
+  ChartBarSquareIcon
+} from '@heroicons/react/24/outline';
 
 type PortfolioExplanationProps = {
   analysis: PortfolioAnalysis
@@ -48,6 +57,21 @@ export function PortfolioExplanation({ analysis, language = 'en' }: PortfolioExp
     
     return explanations[language];
   }
+
+  // Generate diversification explanation without AI insights
+  const generateDiversificationExplanation = () => {
+    const assetCount = Object.keys(analysis.allocations || {}).length;
+    const isWellDiversified = assetCount > 3;
+    const largestHolding = Math.max(...Object.values(analysis.allocations || {}).map(v => Number(v) || 0));
+    const hasConcenrationRisk = largestHolding > 0.3; // 30% in a single asset
+    
+    const explanations = {
+      en: `Your portfolio includes ${assetCount} different assets, which provides ${isWellDiversified ? 'good' : 'limited'} diversification benefits. ${hasConcenrationRisk ? 'There is concentration risk with a significant portion allocated to a single asset.' : 'The allocation is well balanced across multiple assets, reducing specific risk.'} Optimal diversification depends on correlation between assets and exposure to different sectors and geographies.`,
+      es: `Su cartera incluye ${assetCount} activos diferentes, lo que proporciona beneficios de diversificación ${isWellDiversified ? 'buenos' : 'limitados'}. ${hasConcenrationRisk ? 'Existe riesgo de concentración con una porción significativa asignada a un solo activo.' : 'La asignación está bien equilibrada entre múltiples activos, reduciendo el riesgo específico.'} La diversificación óptima depende de la correlación entre activos y la exposición a diferentes sectores y geografías.`
+    };
+    
+    return explanations[language];
+  }
   
   // Check if AI insights are available
   const hasAiInsights = analysis.ai_insights && 
@@ -68,90 +92,177 @@ export function PortfolioExplanation({ analysis, language = 'en' }: PortfolioExp
     analysis.ai_insights?.market_outlook || {} :
     null;
 
+  // Generate action items based on portfolio analysis
+  const generateActionItems = () => {
+    const metrics = analysis.metrics;
+    const actionItems = [];
+    
+    if (metrics.sharpe_ratio < 0.5) {
+      actionItems.push({
+        en: "Consider revising your asset allocation to improve risk-adjusted returns",
+        es: "Considere revisar su asignación de activos para mejorar los rendimientos ajustados por riesgo"
+      });
+    }
+    
+    if (metrics.volatility > 0.25) {
+      actionItems.push({
+        en: "Your portfolio shows high volatility, consider adding more stable assets",
+        es: "Su cartera muestra alta volatilidad, considere agregar activos más estables"
+      });
+    }
+    
+    if (Object.keys(analysis.allocations || {}).length < 4) {
+      actionItems.push({
+        en: "Increase diversification by adding more uncorrelated assets",
+        es: "Aumente la diversificación agregando más activos no correlacionados"
+      });
+    }
+    
+    if (metrics.beta > 1.2) {
+      actionItems.push({
+        en: "Your portfolio is highly sensitive to market movements, consider reducing beta",
+        es: "Su cartera es muy sensible a los movimientos del mercado, considere reducir el beta"
+      });
+    }
+    
+    return actionItems.map(item => item[language as 'en' | 'es']);
+  };
+
   return (
     <Dialog>
       <DialogTrigger asChild>
         <Button variant="outline" className="w-full md:w-auto">
-          <span className="mr-2">✨</span> AI Explanation
+          <LightBulbIcon className="h-5 w-5 mr-2" /> AI Analysis
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex flex-col gap-0 p-0 sm:max-h-[min(640px,80vh)] sm:max-w-[800px]">
+      <DialogContent className="flex flex-col gap-0 p-0 bg-[#121212] sm:max-h-[min(720px,80vh)] sm:max-w-[800px]">
         <div className="overflow-y-auto">
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle className="text-xl bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
-              Portfolio Analysis Explanation
+          <DialogHeader className="px-6 pt-6 pb-2">
+            <DialogTitle className="text-xl md:text-2xl bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+              AI-Powered Portfolio Analysis
             </DialogTitle>
             <DialogDescription className="text-base text-gray-300">
-              Detailed insights and recommendations for your portfolio
+              Comprehensive insights and actionable recommendations for your portfolio
             </DialogDescription>
           </DialogHeader>
 
-          <div className="p-6 space-y-6">
-            <div>
-              <h3 className="text-xl font-semibold mb-2">Portfolio Summary</h3>
-              <p className="text-gray-600 dark:text-gray-300">
+          <div className="p-6 space-y-8">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="bg-[#1a1a1a] rounded-xl p-5 border border-purple-500/20"
+            >
+              <div className="flex items-start mb-3">
+                <ChartBarIcon className="h-6 w-6 text-purple-400 mr-2 mt-1" />
+                <h3 className="text-xl font-semibold text-white">Portfolio Summary</h3>
+              </div>
+              <p className="text-gray-300 leading-relaxed">
                 {hasAiInsights && aiExplanations?.summary ? 
                   aiExplanations.summary : 
                   generateBasicExplanation()}
               </p>
-            </div>
+            </motion.div>
             
-            <div>
-              <h3 className="text-xl font-semibold mb-2">Risk Analysis</h3>
-              <p className="text-gray-600 dark:text-gray-300">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="bg-[#1a1a1a] rounded-xl p-5 border border-yellow-500/20"
+            >
+              <div className="flex items-start mb-3">
+                <ShieldExclamationIcon className="h-6 w-6 text-yellow-400 mr-2 mt-1" />
+                <h3 className="text-xl font-semibold text-white">Risk Analysis</h3>
+              </div>
+              <p className="text-gray-300 leading-relaxed">
                 {hasAiInsights && aiExplanations?.risk_analysis ? 
                   aiExplanations.risk_analysis : 
                   generateRiskExplanation()}
               </p>
-            </div>
+            </motion.div>
             
-            {hasAiInsights && aiExplanations?.diversification_analysis && (
-              <div>
-                <h3 className="text-xl font-semibold mb-2">Diversification Analysis</h3>
-                <p className="text-gray-600 dark:text-gray-300">
-                  {aiExplanations.diversification_analysis}
-                </p>
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              className="bg-[#1a1a1a] rounded-xl p-5 border border-blue-500/20"
+            >
+              <div className="flex items-start mb-3">
+                <ArrowPathIcon className="h-6 w-6 text-blue-400 mr-2 mt-1" />
+                <h3 className="text-xl font-semibold text-white">Diversification Analysis</h3>
               </div>
-            )}
+              <p className="text-gray-300 leading-relaxed">
+                {hasAiInsights && aiExplanations?.diversification_analysis ? 
+                  aiExplanations.diversification_analysis : 
+                  generateDiversificationExplanation()}
+              </p>
+            </motion.div>
             
             {hasAiInsights && aiExplanations?.market_analysis && (
-              <div>
-                <h3 className="text-xl font-semibold mb-2">Market Analysis</h3>
-                <p className="text-gray-600 dark:text-gray-300">
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+                className="bg-[#1a1a1a] rounded-xl p-5 border border-green-500/20"
+              >
+                <div className="flex items-start mb-3">
+                  <GlobeAmericasIcon className="h-6 w-6 text-green-400 mr-2 mt-1" />
+                  <h3 className="text-xl font-semibold text-white">Market Analysis</h3>
+                </div>
+                <p className="text-gray-300 leading-relaxed">
                   {aiExplanations.market_analysis}
                 </p>
-              </div>
+              </motion.div>
             )}
             
-            {hasAiInsights && aiRecommendations.length > 0 && (
-              <div>
-                <h3 className="text-xl font-semibold mb-2">Recommendations</h3>
-                <ul className="list-disc pl-5 space-y-1 text-gray-600 dark:text-gray-300">
-                  {aiRecommendations.map((rec, index) => (
-                    <li key={index}>{rec}</li>
-                  ))}
-                </ul>
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+              className="bg-[#1a1a1a] rounded-xl p-5 border border-red-500/20"
+            >
+              <div className="flex items-start mb-3">
+                <LightBulbIcon className="h-6 w-6 text-red-400 mr-2 mt-1" />
+                <h3 className="text-xl font-semibold text-white">Recommendations</h3>
               </div>
-            )}
+              <ul className="list-disc pl-5 space-y-2 text-gray-300">
+                {hasAiInsights && aiRecommendations.length > 0 ? 
+                  aiRecommendations.map((rec, index) => (
+                    <li key={index}>{rec}</li>
+                  )) : 
+                  generateActionItems().map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))
+                }
+              </ul>
+            </motion.div>
             
             {hasAiInsights && marketOutlook && (
-              <div>
-                <h3 className="text-xl font-semibold mb-2">Market Outlook</h3>
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.5 }}
+                className="bg-[#1a1a1a] rounded-xl p-5 border border-indigo-500/20"
+              >
+                <div className="flex items-start mb-3">
+                  <ChartBarSquareIcon className="h-6 w-6 text-indigo-400 mr-2 mt-1" />
+                  <h3 className="text-xl font-semibold text-white">Market Outlook</h3>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
-                    <h4 className="font-medium mb-1">Short Term</h4>
-                    <p className="text-sm">{marketOutlook.short_term || 'No data available'}</p>
+                  <div className="bg-[#252525] p-4 rounded-lg">
+                    <h4 className="font-medium mb-1 text-blue-300">Short Term</h4>
+                    <p className="text-sm text-gray-300">{marketOutlook.short_term || 'No data available'}</p>
                   </div>
-                  <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
-                    <h4 className="font-medium mb-1">Medium Term</h4>
-                    <p className="text-sm">{marketOutlook.medium_term || 'No data available'}</p>
+                  <div className="bg-[#252525] p-4 rounded-lg">
+                    <h4 className="font-medium mb-1 text-purple-300">Medium Term</h4>
+                    <p className="text-sm text-gray-300">{marketOutlook.medium_term || 'No data available'}</p>
                   </div>
-                  <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
-                    <h4 className="font-medium mb-1">Long Term</h4>
-                    <p className="text-sm">{marketOutlook.long_term || 'No data available'}</p>
+                  <div className="bg-[#252525] p-4 rounded-lg">
+                    <h4 className="font-medium mb-1 text-indigo-300">Long Term</h4>
+                    <p className="text-sm text-gray-300">{marketOutlook.long_term || 'No data available'}</p>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             )}
           </div>
         </div>

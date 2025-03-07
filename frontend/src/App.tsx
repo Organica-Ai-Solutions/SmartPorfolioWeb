@@ -17,6 +17,7 @@ import { RebalanceResult } from './types/portfolio'
 import { RebalanceExplanation } from './components/RebalanceExplanation'
 import { AllocationChart } from './components/AllocationChart'
 import { PerformanceChart } from './components/PerformanceChart'
+import { PortfolioSummary } from './components/PortfolioSummary'
 
 ChartJS.register(
   ArcElement,
@@ -451,159 +452,262 @@ function App() {
                     key="analysis-results"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
                     transition={{ duration: 0.5 }}
-                    className="mt-8 space-y-6"
                   >
-                    <h2 className="text-2xl font-bold text-center bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
-                      Portfolio Analysis Results
-                    </h2>
-                    
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                    <motion.div 
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.3, duration: 0.5 }}
+                      className="text-center mb-10"
+                    >
+                      <h2 className="text-3xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+                        Portfolio Analysis Results
+                      </h2>
+                      <p className="text-lg text-gray-300">
+                        Optimized asset allocation based on your preferences
+                      </p>
+                    </motion.div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
                       <div>
-                        <h2 className="text-2xl font-bold mb-4">Portfolio Allocation</h2>
-                        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-                          <AllocationChart allocations={analysis.allocations} />
+                        <AllocationChart allocations={analysis.allocations} />
+                      </div>
+                      <div>
+                        <PerformanceChart data={chartData} />
+                      </div>
+                    </div>
+
+                    <div className="space-y-10">
+                      {/* Portfolio Summary Card */}
+                      {analysis && analysis.metrics && (
+                        <div>
+                          <PortfolioSummary metrics={analysis.metrics} />
+                          <div className="flex justify-center mb-6">
+                            <div className="bg-[#0a0a0a]/80 backdrop-blur-sm border border-white/10 rounded-xl p-6 w-full">
+                              <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-bold text-blue-400">AI Analysis</h3>
+                                <PortfolioExplanation analysis={analysis} language="en" />
+                              </div>
+                              <p className="text-gray-300">
+                                Get detailed AI-powered insights about your portfolio including risk assessment, 
+                                diversification analysis, and personalized recommendations.
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                        
-                        <h2 className="text-2xl font-bold mt-6 mb-4">Performance</h2>
+                      )}
+
+                      {/* Individual Stock Analysis Section */}
+                      {analysis && analysis.asset_metrics && Object.keys(analysis.asset_metrics).length > 0 && (
+                        <div className="space-y-6">
+                          <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-semibold text-purple-400">Individual Stock Analysis</h2>
+                            <Tooltip content={{
+                              title: "Individual Stock Metrics",
+                              description: "Detailed analysis of each stock in your portfolio, including returns, risk metrics, and market performance indicators."
+                            }}>
+                              <Button variant="ghost" className="p-2">
+                                <InformationCircleIcon className="w-5 h-5" />
+                              </Button>
+                            </Tooltip>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {Object.entries(analysis.asset_metrics).map(([ticker, assetMetric]) => (
+                              <StockAnalysis 
+                                key={ticker} 
+                                ticker={ticker} 
+                                metrics={assetMetric}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Historical Performance Chart */}
+                      <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="font-semibold text-purple-400">Historical Performance</h3>
+                          <Tooltip
+                            content="This chart compares your portfolio's performance against the S&P 500 benchmark. The purple line shows your portfolio value, the blue line shows the S&P 500, and the red dotted line shows rolling volatility (risk level over time)."
+                            side="left"
+                            sideOffset={5}
+                          >
+                            <button 
+                              type="button"
+                              className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 16v-4"/>
+                                <path d="M12 8h.01"/>
+                              </svg>
+                            </button>
+                          </Tooltip>
+                        </div>
                         <div className="w-full h-[300px]">
-                          {chartData ? (
-                            <PerformanceChart data={chartData} />
+                          {analysis?.historical_performance?.dates?.length > 0 ? (
+                            <Line
+                              data={{
+                                labels: analysis.historical_performance.dates,
+                                datasets: [
+                                  {
+                                    label: 'Portfolio Value',
+                                    data: analysis.historical_performance.portfolio_values?.map(value => {
+                                      const numValue = Number(value);
+                                      return isNaN(numValue) || !isFinite(numValue) ? null : numValue;
+                                    }) || [],
+                                    borderColor: 'rgb(147, 51, 234)',
+                                    backgroundColor: 'rgba(147, 51, 234, 0.1)',
+                                    tension: 0.4,
+                                    fill: true,
+                                    yAxisID: 'y'
+                                  },
+                                  {
+                                    label: 'S&P 500',
+                                    data: analysis.market_comparison?.market_values?.map(value => {
+                                      const numValue = Number(value);
+                                      return isNaN(numValue) || !isFinite(numValue) ? null : numValue;
+                                    }) || [],
+                                    borderColor: 'rgb(59, 130, 246)',
+                                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                    tension: 0.4,
+                                    fill: true,
+                                    yAxisID: 'y'
+                                  },
+                                  {
+                                    label: 'Rolling Volatility',
+                                    data: analysis.historical_performance.rolling_volatility?.map(value => {
+                                      const numValue = Number(value);
+                                      return isNaN(numValue) || !isFinite(numValue) ? null : numValue;
+                                    }) || [],
+                                    borderColor: 'rgb(239, 68, 68)',
+                                    borderDash: [5, 5],
+                                    tension: 0.4,
+                                    fill: false,
+                                    yAxisID: 'y1'
+                                  }
+                                ]
+                              }}
+                              options={{
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: {
+                                  mode: 'index',
+                                  intersect: false,
+                                },
+                                plugins: {
+                                  legend: {
+                                    position: 'top' as const,
+                                    labels: {
+                                      color: 'white'
+                                    }
+                                  },
+                                  tooltip: {
+                                    enabled: true,
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                      label: function(context) {
+                                        const value = context.raw as number;
+                                        if (context.dataset.label === 'Rolling Volatility') {
+                                          return `${context.dataset.label}: ${(value * 100).toFixed(2)}%`;
+                                        }
+                                        return `${context.dataset.label}: ${value.toFixed(2)}`;
+                                      }
+                                    }
+                                  }
+                                },
+                                scales: {
+                                  x: {
+                                    grid: {
+                                      color: 'rgba(255, 255, 255, 0.1)'
+                                    },
+                                    ticks: {
+                                      color: 'white'
+                                    }
+                                  },
+                                  y: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'left',
+                                    grid: {
+                                      color: 'rgba(255, 255, 255, 0.1)'
+                                    },
+                                    ticks: {
+                                      color: 'white'
+                                    }
+                                  },
+                                  y1: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'right',
+                                    grid: {
+                                      drawOnChartArea: false
+                                    },
+                                    ticks: {
+                                      color: 'white',
+                                      callback: function(value) {
+                                        return (Number(value) * 100).toFixed(1) + '%';
+                                      }
+                                    }
+                                  }
+                                }
+                              }}
+                            />
                           ) : (
-                            <div className="flex items-center justify-center h-full text-gray-500">
-                              No performance data available
+                            <div className="h-full flex items-center justify-center text-gray-400">
+                              No historical performance data available
                             </div>
                           )}
                         </div>
                       </div>
-                      
-                      <div>
-                        <h2 className="text-2xl font-bold mb-4">Portfolio Analysis</h2>
-                        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-                          <PortfolioExplanation analysis={analysis} language="en" />
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* Individual Stock Analysis Section */}
-                    {analysis && analysis.asset_metrics && Object.keys(analysis.asset_metrics).length > 0 && (
-                      <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                          <h2 className="text-xl font-semibold text-purple-400">Individual Stock Analysis</h2>
-                          <Tooltip content={{
-                            title: "Individual Stock Metrics",
-                            description: "Detailed analysis of each stock in your portfolio, including returns, risk metrics, and market performance indicators."
-                          }}>
-                            <Button variant="ghost" className="p-2">
-                              <InformationCircleIcon className="w-5 h-5" />
-                            </Button>
+                      {/* Drawdown Chart */}
+                      <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="font-semibold text-purple-400">Drawdown Analysis</h3>
+                          <Tooltip
+                            content="The drawdown chart shows how much your portfolio has declined from its peak value at any given time. This helps visualize the maximum losses you might experience and how long it takes to recover from them."
+                            side="left"
+                            sideOffset={5}
+                          >
+                            <button 
+                              type="button"
+                              className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 16v-4"/>
+                                <path d="M12 8h.01"/>
+                              </svg>
+                            </button>
                           </Tooltip>
                         </div>
-                        
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          {Object.entries(analysis.asset_metrics).map(([ticker, assetMetric]) => (
-                            <StockAnalysis 
-                              key={ticker} 
-                              ticker={ticker} 
-                              metrics={assetMetric}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Historical Performance Chart */}
-                    <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-semibold text-purple-400">Historical Performance</h3>
-                        <Tooltip
-                          content="This chart compares your portfolio's performance against the S&P 500 benchmark. The purple line shows your portfolio value, the blue line shows the S&P 500, and the red dotted line shows rolling volatility (risk level over time)."
-                          side="left"
-                          sideOffset={5}
-                        >
-                          <button 
-                            type="button"
-                            className="p-2 hover:bg-white/10 rounded-full transition-colors"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
-                              <circle cx="12" cy="12" r="10"/>
-                              <path d="M12 16v-4"/>
-                              <path d="M12 8h.01"/>
-                            </svg>
-                          </button>
-                        </Tooltip>
-                      </div>
-                      <div className="w-full h-[300px]">
-                        {analysis?.historical_performance?.dates?.length > 0 ? (
+                        <div className="w-full h-[200px]">
                           <Line
                             data={{
                               labels: analysis.historical_performance.dates,
                               datasets: [
                                 {
-                                  label: 'Portfolio Value',
-                                  data: analysis.historical_performance.portfolio_values?.map(value => {
-                                    const numValue = Number(value);
-                                    return isNaN(numValue) || !isFinite(numValue) ? null : numValue;
-                                  }) || [],
-                                  borderColor: 'rgb(147, 51, 234)',
-                                  backgroundColor: 'rgba(147, 51, 234, 0.1)',
-                                  tension: 0.4,
-                                  fill: true,
-                                  yAxisID: 'y'
-                                },
-                                {
-                                  label: 'S&P 500',
-                                  data: analysis.market_comparison?.market_values?.map(value => {
-                                    const numValue = Number(value);
-                                    return isNaN(numValue) || !isFinite(numValue) ? null : numValue;
-                                  }) || [],
-                                  borderColor: 'rgb(59, 130, 246)',
-                                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                                  tension: 0.4,
-                                  fill: true,
-                                  yAxisID: 'y'
-                                },
-                                {
-                                  label: 'Rolling Volatility',
-                                  data: analysis.historical_performance.rolling_volatility?.map(value => {
-                                    const numValue = Number(value);
-                                    return isNaN(numValue) || !isFinite(numValue) ? null : numValue;
-                                  }) || [],
+                                  label: 'Drawdown',
+                                  data: analysis.historical_performance.drawdowns,
                                   borderColor: 'rgb(239, 68, 68)',
-                                  borderDash: [5, 5],
+                                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
                                   tension: 0.4,
-                                  fill: false,
-                                  yAxisID: 'y1'
+                                  fill: true
                                 }
                               ]
                             }}
                             options={{
                               responsive: true,
                               maintainAspectRatio: false,
-                              interaction: {
-                                mode: 'index',
-                                intersect: false,
-                              },
                               plugins: {
                                 legend: {
+                                  display: true,
                                   position: 'top' as const,
                                   labels: {
                                     color: 'white'
-                                  }
-                                },
-                                tooltip: {
-                                  enabled: true,
-                                  mode: 'index',
-                                  intersect: false,
-                                  callbacks: {
-                                    label: function(context) {
-                                      const value = context.raw as number;
-                                      if (context.dataset.label === 'Rolling Volatility') {
-                                        return `${context.dataset.label}: ${(value * 100).toFixed(2)}%`;
-                                      }
-                                      return `${context.dataset.label}: ${value.toFixed(2)}`;
-                                    }
                                   }
                                 }
                               },
@@ -617,170 +721,78 @@ function App() {
                                   }
                                 },
                                 y: {
-                                  type: 'linear',
-                                  display: true,
-                                  position: 'left',
                                   grid: {
                                     color: 'rgba(255, 255, 255, 0.1)'
                                   },
                                   ticks: {
-                                    color: 'white'
-                                  }
-                                },
-                                y1: {
-                                  type: 'linear',
-                                  display: true,
-                                  position: 'right',
-                                  grid: {
-                                    drawOnChartArea: false
-                                  },
-                                  ticks: {
                                     color: 'white',
                                     callback: function(value) {
-                                      return (Number(value) * 100).toFixed(1) + '%';
+                                      return (Number(value) * 100).toFixed(1) + '%'
                                     }
                                   }
                                 }
                               }
                             }}
                           />
-                        ) : (
-                          <div className="h-full flex items-center justify-center text-gray-400">
-                            No historical performance data available
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Drawdown Chart */}
-                    <div className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-semibold text-purple-400">Drawdown Analysis</h3>
-                        <Tooltip
-                          content="The drawdown chart shows how much your portfolio has declined from its peak value at any given time. This helps visualize the maximum losses you might experience and how long it takes to recover from them."
-                          side="left"
-                          sideOffset={5}
-                        >
-                          <button 
-                            type="button"
-                            className="p-2 hover:bg-white/10 rounded-full transition-colors"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
-                              <circle cx="12" cy="12" r="10"/>
-                              <path d="M12 16v-4"/>
-                              <path d="M12 8h.01"/>
-                            </svg>
-                          </button>
-                        </Tooltip>
-                      </div>
-                      <div className="w-full h-[200px]">
-                        <Line
-                          data={{
-                            labels: analysis.historical_performance.dates,
-                            datasets: [
-                              {
-                                label: 'Drawdown',
-                                data: analysis.historical_performance.drawdowns,
-                                borderColor: 'rgb(239, 68, 68)',
-                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                                tension: 0.4,
-                                fill: true
-                              }
-                            ]
-                          }}
-                          options={{
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                              legend: {
-                                display: true,
-                                position: 'top' as const,
-                                labels: {
-                                  color: 'white'
-                                }
-                              }
-                            },
-                            scales: {
-                              x: {
-                                grid: {
-                                  color: 'rgba(255, 255, 255, 0.1)'
-                                },
-                                ticks: {
-                                  color: 'white'
-                                }
-                              },
-                              y: {
-                                grid: {
-                                  color: 'rgba(255, 255, 255, 0.1)'
-                                },
-                                ticks: {
-                                  color: 'white',
-                                  callback: function(value) {
-                                    return (Number(value) * 100).toFixed(1) + '%'
-                                  }
-                                }
-                              }
-                            }
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Asset Metrics */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-                      {Object.entries(analysis.asset_metrics).map(([ticker, assetMetric]) => (
-                        <div key={ticker} className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
-                          <h3 className="font-semibold mb-4 text-purple-400">{ticker} Metrics</h3>
-                          <div className="space-y-3 text-white">
-                            {analysis && analysis.metrics && (
-                              <>
-                                <p className="flex justify-between">
-                                  <span>Expected Return:</span>
-                                  <span className="font-medium text-green-400">
-                                    {(analysis.metrics.expected_return * 100).toFixed(2)}%
-                                  </span>
-                                </p>
-                                <p className="flex justify-between">
-                                  <span>Volatility:</span>
-                                  <span className="font-medium text-yellow-400">
-                                    {(analysis.metrics.volatility * 100).toFixed(2)}%
-                                  </span>
-                                </p>
-                                <p className="flex justify-between">
-                                  <span>Sharpe Ratio:</span>
-                                  <span className="font-medium text-blue-400">
-                                    {analysis.metrics.sharpe_ratio.toFixed(2)}
-                                  </span>
-                                </p>
-                                <p className="flex justify-between">
-                                  <span>Sortino Ratio:</span>
-                                  <span className="font-medium text-purple-400">
-                                    {analysis.metrics.sortino_ratio.toFixed(2)}
-                                  </span>
-                                </p>
-                                <p className="flex justify-between">
-                                  <span>Market Beta:</span>
-                                  <span className={`font-medium ${analysis.metrics.beta > 1 ? 'text-red-400' : 'text-green-400'}`}>
-                                    {analysis.metrics.beta.toFixed(2)}
-                                  </span>
-                                </p>
-                                <p className="flex justify-between">
-                                  <span>Maximum Drawdown:</span>
-                                  <span className="font-medium text-red-400">
-                                    {(analysis.metrics.max_drawdown * 100).toFixed(2)}%
-                                  </span>
-                                </p>
-                                <p className="flex justify-between">
-                                  <span>Value at Risk (95%):</span>
-                                  <span className="font-medium text-orange-400">
-                                    {(analysis.metrics.var_95 * 100).toFixed(2)}%
-                                  </span>
-                                </p>
-                              </>
-                            )}
-                          </div>
                         </div>
-                      ))}
+                      </div>
+
+                      {/* Asset Metrics */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+                        {Object.entries(analysis.asset_metrics).map(([ticker, assetMetric]) => (
+                          <div key={ticker} className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
+                            <h3 className="font-semibold mb-4 text-purple-400">{ticker} Metrics</h3>
+                            <div className="space-y-3 text-white">
+                              {analysis && analysis.metrics && (
+                                <>
+                                  <p className="flex justify-between">
+                                    <span>Expected Return:</span>
+                                    <span className="font-medium text-green-400">
+                                      {(analysis.metrics.expected_return * 100).toFixed(2)}%
+                                    </span>
+                                  </p>
+                                  <p className="flex justify-between">
+                                    <span>Volatility:</span>
+                                    <span className="font-medium text-yellow-400">
+                                      {(analysis.metrics.volatility * 100).toFixed(2)}%
+                                    </span>
+                                  </p>
+                                  <p className="flex justify-between">
+                                    <span>Sharpe Ratio:</span>
+                                    <span className="font-medium text-blue-400">
+                                      {analysis.metrics.sharpe_ratio.toFixed(2)}
+                                    </span>
+                                  </p>
+                                  <p className="flex justify-between">
+                                    <span>Sortino Ratio:</span>
+                                    <span className="font-medium text-purple-400">
+                                      {analysis.metrics.sortino_ratio.toFixed(2)}
+                                    </span>
+                                  </p>
+                                  <p className="flex justify-between">
+                                    <span>Market Beta:</span>
+                                    <span className={`font-medium ${analysis.metrics.beta > 1 ? 'text-red-400' : 'text-green-400'}`}>
+                                      {analysis.metrics.beta.toFixed(2)}
+                                    </span>
+                                  </p>
+                                  <p className="flex justify-between">
+                                    <span>Maximum Drawdown:</span>
+                                    <span className="font-medium text-red-400">
+                                      {(analysis.metrics.max_drawdown * 100).toFixed(2)}%
+                                    </span>
+                                  </p>
+                                  <p className="flex justify-between">
+                                    <span>Value at Risk (95%):</span>
+                                    <span className="font-medium text-orange-400">
+                                      {(analysis.metrics.var_95 * 100).toFixed(2)}%
+                                    </span>
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </motion.div>
                 )}

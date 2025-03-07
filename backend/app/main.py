@@ -18,6 +18,7 @@ from alpaca.trading.enums import OrderSide, TimeInForce
 from app.services.ai_advisor_service import AIAdvisorService
 import cvxpy as cp
 import time
+import math
 
 # Load environment variables
 load_dotenv()
@@ -598,34 +599,63 @@ async def analyze_portfolio_simple(request: Portfolio):
     try:
         print(f"Analyzing portfolio (simple) for tickers: {request.tickers}")
         
-        # Return a simple mock response
+        # Mock weights proportionate to the number of tickers
         mock_weights = {ticker: 1.0/len(request.tickers) for ticker in request.tickers}
+        
+        # Helper function to generate realistic mock metrics based on ticker
+        def generate_ticker_metrics(ticker):
+            # Generate pseudo-random but consistent values based on ticker name
+            ticker_sum = sum(ord(c) for c in ticker)
+            seed = ticker_sum / 1000
+            
+            # Vary returns between 5% and 25% based on ticker
+            return_factor = 0.05 + (seed % 0.20)
+            # Vary volatility between 10% and 40% based on ticker
+            volatility_factor = 0.10 + (seed % 0.30)
+            # Vary beta between 0.6 and 1.8 based on ticker
+            beta_factor = 0.6 + (seed % 1.2)
+            # Vary alpha between -3% and 5% based on ticker
+            alpha_factor = -0.03 + (seed % 0.08)
+            # Vary max drawdown between -10% and -40% based on ticker
+            max_drawdown = -0.10 - (seed % 0.30)
+            
+            return {
+                "annual_return": return_factor,
+                "annual_volatility": volatility_factor,
+                "beta": beta_factor,
+                "weight": mock_weights[ticker],
+                "alpha": alpha_factor,
+                "volatility": volatility_factor,
+                "var_95": -volatility_factor * 1.65 / math.sqrt(252),  # Simplified VaR calculation
+                "max_drawdown": max_drawdown,
+                "correlation": 0.3 + (seed % 0.5)  # Correlation between 0.3 and 0.8
+            }
+        
+        # Generate asset metrics
+        asset_metrics = {ticker: generate_ticker_metrics(ticker) for ticker in request.tickers}
+        
+        # Calculate portfolio metrics
+        portfolio_return = sum(metrics["annual_return"] * mock_weights[ticker] for ticker, metrics in asset_metrics.items())
+        portfolio_volatility = 0.15  # Simplified; in reality would use covariance matrix
+        portfolio_beta = sum(metrics["beta"] * mock_weights[ticker] for ticker, metrics in asset_metrics.items())
+        portfolio_sharpe = (portfolio_return - 0.02) / portfolio_volatility if portfolio_volatility > 0 else 0
+        portfolio_sortino = portfolio_sharpe * 1.2  # Simplified
+        portfolio_var = -portfolio_volatility * 1.65 / math.sqrt(252)
+        portfolio_max_dd = min(metrics["max_drawdown"] for metrics in asset_metrics.values()) * 0.8  # Simplified
         
         return {
             "allocations": mock_weights,
             "metrics": {
-                "expected_annual_return": 0.08,
-                "annual_volatility": 0.15,
-                "sharpe_ratio": 0.5,
-                "sortino_ratio": 0.6,
-                "beta": 0.9,
-                "value_at_risk_95": -0.02,
-                "conditional_var_95": -0.03,
-                "volatility": 0.15
+                "expected_return": portfolio_return,
+                "volatility": portfolio_volatility,
+                "sharpe_ratio": portfolio_sharpe,
+                "sortino_ratio": portfolio_sortino,
+                "beta": portfolio_beta,
+                "max_drawdown": portfolio_max_dd,
+                "var_95": portfolio_var,
+                "cvar_95": portfolio_var * 1.2  # Simplified
             },
-            "asset_metrics": {
-                ticker: {
-                    "annual_return": 0.1,
-                    "annual_volatility": 0.2,
-                    "beta": 1.0,
-                    "weight": mock_weights[ticker],
-                    "alpha": 0.01,
-                    "volatility": 0.2,
-                    "var_95": -0.02,
-                    "max_drawdown": -0.15,
-                    "correlation": 0.7
-                } for ticker in request.tickers
-            },
+            "asset_metrics": asset_metrics,
             "discrete_allocation": {
                 "shares": {ticker: int(10000 * mock_weights[ticker] / 100) for ticker in request.tickers},
                 "leftover": 1000.0
