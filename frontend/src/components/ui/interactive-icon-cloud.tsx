@@ -22,19 +22,91 @@ interface CustomSimpleIcon {
   svg?: string; // Add the svg property
 }
 
+// Define a mapping for icon slug transformations
+// Some icons have different naming conventions in newer versions
+const TICKER_TO_ICON_MAPPING: Record<string, string> = {
+  // Tech companies
+  "MSFT": "microsoft",
+  "AMZN": "amazon",
+  "ADBE": "adobe",
+  "ORCL": "oracle",
+  "CSCO": "cisco",
+  
+  // Financial companies
+  "JPM": "jpmorgan",
+  "GS": "goldmansachs",
+  "BAC": "bankofamerica",
+  "WFC": "wellsfargo",
+  "BLK": "blackrock",
+  "MS": "morganstanley",
+  "C": "citigroup",
+  "AXP": "americanexpress",
+  "SCHW": "charlesschwab",
+  
+  // Consumer companies
+  "DIS": "disney",
+  "COST": "costco",
+  "PG": "pg",
+  "KO": "cocacola",
+  "PEP": "pepsi",
+  
+  // Crypto
+  "AVAX-USD": "avalanche",
+  "UNI-USD": "uniswap",
+  "AAVE-USD": "aave",
+  "ATOM-USD": "cosmos",
+};
+
+// Alternative slugs to try if the first one fails
+const ALTERNATIVE_SLUGS: Record<string, string[]> = {
+  "microsoft": ["microsoftazure", "microsoftedge", "microsoftoffice", "microsoftwindows"],
+  "amazon": ["amazon"],
+  "jpmorgan": ["jpmorganchase"],
+  "goldmansachs": ["goldman-sachs", "goldman"],
+  "bankofamerica": ["bank-of-america"],
+  "wellsfargo": ["wells-fargo"],
+  "morganstanley": ["morgan-stanley"],
+  "americanexpress": ["american-express", "amex"],
+  "charlesschwab": ["charles-schwab"],
+  "procterandgamble": ["procter-and-gamble", "procter&gamble", "pg"],
+  "cocacola": ["coca-cola"],
+  "avalanche": ["avalancheavax"],
+};
+
 // Create a wrapper for fetchSimpleIcons that uses our version
 const fetchSimpleIcons = async (params: { slugs: string[] }) => {
   try {
     // Override the default behavior to use our version
-    // The original function doesn't expose a way to set the version directly
-    // So we need to fetch the icons manually
     const { slugs } = params;
     const simpleIcons: Record<string, CustomSimpleIcon> = {};
     
+    // Map ticker symbols to icon slugs using our mapping
+    const mappedSlugs = slugs.map(slug => {
+      const mapped = TICKER_TO_ICON_MAPPING[slug] || slug.toLowerCase();
+      console.debug(`Mapping ${slug} to icon: ${mapped}`);
+      return mapped;
+    });
+    
+    console.debug('Fetching icons for slugs:', mappedSlugs);
+    
     await Promise.all(
-      slugs.map(async (slug) => {
+      mappedSlugs.map(async (slug) => {
         try {
-          const response = await fetch(`https://cdn.jsdelivr.net/npm/simple-icons@${SIMPLE_ICONS_VERSION}/icons/${slug}.svg`);
+          // Try to fetch with the primary slug
+          let response = await fetch(`https://cdn.jsdelivr.net/npm/simple-icons@${SIMPLE_ICONS_VERSION}/icons/${slug}.svg`);
+          
+          // If the primary slug fails, try alternatives if available
+          if (!response.ok && ALTERNATIVE_SLUGS[slug]) {
+            for (const altSlug of ALTERNATIVE_SLUGS[slug]) {
+              console.debug(`Trying alternative slug for ${slug}: ${altSlug}`);
+              response = await fetch(`https://cdn.jsdelivr.net/npm/simple-icons@${SIMPLE_ICONS_VERSION}/icons/${altSlug}.svg`);
+              if (response.ok) {
+                console.debug(`Found icon using alternative slug: ${altSlug}`);
+                break;
+              }
+            }
+          }
+          
           if (response.ok) {
             const svgText = await response.text();
             simpleIcons[slug] = {
@@ -54,6 +126,7 @@ const fetchSimpleIcons = async (params: { slugs: string[] }) => {
     );
     
     console.debug('Successfully fetched icons with version:', SIMPLE_ICONS_VERSION);
+    console.debug('Successfully fetched icons:', Object.keys(simpleIcons));
     
     return {
       simpleIcons,
@@ -109,13 +182,13 @@ export const cloudProps: Omit<ICloud, "children"> = {
   },
 }
 
-// Map company tickers to their SimpleIcon slugs
+// Map company tickers to their SimpleIcon slugs (updated for v14.8.0)
 const tickerToSlug: Record<string, string> = {
   // Tech Companies
   AAPL: "apple",
   GOOGL: "google",
   MSFT: "microsoft",
-  AMZN: "amazonaws",
+  AMZN: "amazon",
   META: "facebook",
   NFLX: "netflix",
   TSLA: "tesla",
@@ -148,8 +221,8 @@ const tickerToSlug: Record<string, string> = {
   DIS: "disney",
   SBUX: "starbucks",
   ABNB: "airbnb",
-  PG: "procter-and-gamble",
-  KO: "coca-cola",
+  PG: "pg",
+  KO: "cocacola",
   PEP: "pepsi",
   MCD: "mcdonalds",
   WMT: "walmart",
@@ -169,219 +242,32 @@ const tickerToSlug: Record<string, string> = {
   V: "visa",
   MA: "mastercard",
   PYPL: "paypal",
-  MS: "morgan-stanley",
-  GS: "goldman-sachs",
-  BAC: "bank-of-america",
-  C: "citigroup",
-  WFC: "wells-fargo",
-  AXP: "american-express",
-  SQ: "square",
-  COIN: "coinbase",
-  HOOD: "robinhood",
-  SCHW: "charles-schwab",
+  MS: "morganstanley",
+  GS: "goldmansachs",
+  BAC: "bankofamerica",
+  WFC: "wellsfargo",
   BLK: "blackrock",
-  SOFI: "sofi",
-  WU: "westernunion",
-  AFRM: "affirm",
-  STRIPE: "stripe",
-  KLARNA: "klarna",
-  
-  // E-commerce & Delivery
-  SHOP: "shopify",
-  ETSY: "etsy",
-  EBAY: "ebay",
-  DASH: "doordash",
-  UBER: "uber",
-  LYFT: "lyft",
-  BABA: "aliexpress",
-  MELI: "mercadolibre",
-  JD: "jd",
-  INSTACART: "instacart",
-  GRUB: "grubhub",
-  
-  // Cloud & Enterprise
-  TEAM: "atlassian",
-  ZS: "zscaler",
-  NET: "cloudflare",
-  DDOG: "datadog",
-  MDB: "mongodb",
-  SNOW: "snowflake",
-  DBX: "dropbox",
-  BOX: "box",
-  ZM: "zoom",
-  OKTA: "okta",
-  TWLO: "twilio",
-  FSLY: "fastly",
-  DOCN: "digitalocean",
-  RXT: "rackspace",
-  GTLB: "gitlab",
-  HUBS: "hubspot",
-  SUMO: "sumologic",
-  NEWR: "newrelic",
-  ELASTIC: "elasticsearch",
-  NGINX: "nginx",
-  REDIS: "redis",
-  PUPPET: "puppet",
-  ANSIBLE: "ansible",
-  DOCKER: "docker",
-  K8S: "kubernetes",
-  
-  // Developer Tools & Platforms
-  GH: "github",
-  GITLAB: "gitlab",
-  BITBUCKET: "bitbucket",
-  NPM: "npm",
-  YARN: "yarn",
-  BABEL: "babel",
-  WEBPACK: "webpack",
-  VITE: "vite",
-  VERCEL: "vercel",
-  NETLIFY: "netlify",
-  HEROKU: "heroku",
-  JENKINS: "jenkins",
-  TRAVIS: "travis-ci",
-  CIRCLE: "circleci",
-  JIRA: "jira",
-  CONFLUENCE: "confluence",
-  
-  // Social & Communication
-  SNAP: "snapchat",
-  PINS: "pinterest",
-  MTCH: "tinder",
-  BMBL: "bumble",
-  DISCORD: "discord",
-  SLACK: "slack",
-  TEAMS: "microsoft-teams",
-  TELEGRAM: "telegram",
-  SIGNAL: "signal",
-  LINE: "line",
-  WECHAT: "wechat",
-  
-  // Gaming & Entertainment
-  NTDOY: "nintendo",
-  SONY: "playstation",
-  EA: "ea",
-  TTWO: "rockstar-games",
-  ATVI: "battle-net",
-  UNITY: "unity",
-  RBLX: "roblox",
-  EPIC: "epic-games",
-  STEAM: "steam",
-  TWITCH: "twitch",
-  
-  // Software & Development
-  ADSK: "autodesk",
-  ANSS: "ansys",
-  AZPN: "aspen",
-  CTXS: "citrix",
-  FTNT: "fortinet",
-  NLOK: "norton",
-  AVAST: "avast",
-  MCAFEE: "mcafee",
-  SYMANTEC: "symantec",
-  
-  // Browsers & Web
-  CHROME: "google-chrome",
-  FIREFOX: "firefox",
-  SAFARI: "safari",
-  EDGE: "edge",
-  BRAVE: "brave",
-  OPERA: "opera",
-  TOR: "tor-project",
-  
-  // Others
-  PTON: "peloton",
-  SWX: "swiss-exchange",
-  WISE: "wise",
-  DOCS: "notion",
-  FVRR: "fiverr",
-  UPWK: "upwork",
-  ASANA: "asana",
-  MONDAY: "monday",
-  TRELLO: "trello",
-  FIGMA: "figma",
-  CANVA: "canva",
-  ADOBE: "adobe",
-  SKETCH: "sketch",
-  INVISION: "invision",
-  DRIBBBLE: "dribbble",
-  BEHANCE: "behance",
-  
-  // Cryptocurrency
+  C: "citigroup",
+  AXP: "americanexpress",
+  SCHW: "charlesschwab",
+
+  // Crypto
   "BTC-USD": "bitcoin",
   "ETH-USD": "ethereum",
   "SOL-USD": "solana",
   "ADA-USD": "cardano",
   "DOT-USD": "polkadot",
-  "AVAX-USD": "avalancheavax",
+  "AVAX-USD": "avalanche",
   "MATIC-USD": "polygon",
   "LINK-USD": "chainlink",
   "XRP-USD": "xrp",
   "DOGE-USD": "dogecoin",
-  "SHIB-USD": "shibainu",
   "UNI-USD": "uniswap",
   "AAVE-USD": "aave",
   "ATOM-USD": "cosmos",
-  "ALGO-USD": "algorand",
-  "FTM-USD": "fantom",
-  "NEAR-USD": "near",
   "BNB-USD": "binance",
   "LTC-USD": "litecoin",
-  "XLM-USD": "stellar",
-  "TRX-USD": "tron",
-  "EOS-USD": "eos",
-  "ZEC-USD": "zcash",
-  "DASH-USD": "dashpay",
-  "XMR-USD": "monero",
-  "NEO-USD": "neo",
-  "CAKE-USD": "pancakeswap",
-  "SUSHI-USD": "sushiswap",
-  "GRT-USD": "graphql",
-  "COMP-USD": "compound",
-  "MKR-USD": "maker",
-  "YFI-USD": "yearn",
-  "SNX-USD": "synthetix",
-  "BAT-USD": "brave",
-  "1INCH-USD": "1inch",
-  "THETA-USD": "theta",
-  "VET-USD": "vechain",
-  "WAVES-USD": "waves",
-  "IOTA-USD": "iota",
-  "XTZ-USD": "tezos",
-  "FLOW-USD": "flow",
-  "MANA-USD": "decentraland",
-  "SAND-USD": "thesandboxgame",
-  "AXS-USD": "axieinfinity",
-  "ENJ-USD": "enjin",
-  "CHZ-USD": "chiliz",
-  "HOT-USD": "holochain",
-  "ONE-USD": "harmony",
-  "EGLD-USD": "elrond",
-  "HBAR-USD": "hedera",
-  "ICX-USD": "icon",
-  "ZIL-USD": "zilliqa",
-  "ONT-USD": "ontology",
-  "QTUM-USD": "qtum",
-  "DGB-USD": "digibyte",
-  "RVN-USD": "ravencoin",
-  "STORJ-USD": "storj",
-  "FIL-USD": "filecoin",
-  "AR-USD": "arweave",
-  "ANKR-USD": "ankr",
-  "BAND-USD": "bandprotocol",
-  "KAVA-USD": "kava",
-  "LUNA-USD": "terra",
-  "CRV-USD": "curve",
-  "REN-USD": "renproject",
-  "BAL-USD": "balancer",
-  "PERP-USD": "perpetual",
-  "KNC-USD": "kyber",
-  "OCEAN-USD": "ocean-protocol",
-  "API3-USD": "api3",
-  "ALPHA-USD": "alpha",
-  "ORN-USD": "orion",
-  "RUNE-USD": "thorchain",
-}
+};
 
 export const renderCustomIcon = (icon: SimpleIcon, theme: string, onClick?: () => void) => {
   const bgHex = theme === "light" ? "#f3f2ef" : "#080510"
