@@ -9,28 +9,44 @@ type AllocationChartProps = {
 };
 
 export function AllocationChart({ allocations }: AllocationChartProps) {
-  // Generate random colors for the chart
+  // Generate vibrant colors for the chart
   const generateColors = (count: number) => {
+    const baseColors = [
+      'hsl(348, 83%, 47%)',   // Red
+      'hsl(120, 73%, 35%)',   // Green
+      'hsl(260, 73%, 45%)',   // Purple
+      'hsl(217, 85%, 55%)',   // Blue
+      'hsl(39, 100%, 50%)',   // Yellow
+      'hsl(180, 73%, 45%)',   // Teal
+      'hsl(288, 59%, 58%)',   // Pink
+      'hsl(15, 73%, 55%)',    // Orange
+    ];
+    
     const colors = [];
     for (let i = 0; i < count; i++) {
-      const hue = (i * 137.5) % 360; // Use golden angle approximation for even distribution
-      colors.push(`hsl(${hue}, 70%, 60%)`);
+      colors.push(baseColors[i % baseColors.length]);
     }
     return colors;
+  };
+
+  // Format percentage values for display
+  const formatPercentages = (values: number[]) => {
+    return values.map(value => value * 100);
   };
 
   // Prepare data for the chart
   const tickers = Object.keys(allocations || {});
   const values = tickers.map(ticker => allocations[ticker]);
   const backgroundColor = generateColors(tickers.length);
+  const percentageValues = formatPercentages(values);
   
   const chartData = {
     labels: tickers,
     datasets: [
       {
-        data: values,
+        data: percentageValues,
         backgroundColor,
-        borderColor: backgroundColor.map(color => color.replace('60%', '50%')),
+        borderColor: backgroundColor.map(color => color.replace(')', ', 0.8)')),
         borderWidth: 1,
       },
     ],
@@ -45,8 +61,12 @@ export function AllocationChart({ allocations }: AllocationChartProps) {
         labels: {
           font: {
             size: 12,
+            weight: 'bold' as const,
           },
           padding: 15,
+          color: 'white',
+          usePointStyle: true,
+          pointStyle: 'circle',
         },
       },
       tooltip: {
@@ -54,9 +74,22 @@ export function AllocationChart({ allocations }: AllocationChartProps) {
           label: (context: any) => {
             const label = context.label || '';
             const value = context.raw || 0;
-            return `${label}: ${(value * 100).toFixed(2)}%`;
+            return `${label}: ${value.toFixed(1)}%`;
           },
         },
+        backgroundColor: 'rgba(20, 20, 20, 0.9)',
+        titleColor: 'white',
+        bodyColor: 'white',
+        titleFont: {
+          size: 14,
+          weight: 'bold' as const,
+        },
+        bodyFont: {
+          size: 13,
+        },
+        displayColors: true,
+        padding: 10,
+        cornerRadius: 4,
       },
     },
   };

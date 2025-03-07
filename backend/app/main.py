@@ -665,6 +665,15 @@ async def analyze_portfolio_simple(request: Portfolio):
         portfolio_var = -portfolio_volatility * 1.65 / math.sqrt(252)
         portfolio_max_dd = min(metrics["max_drawdown"] for metrics in asset_metrics.values()) * 0.8  # Simplified
         
+        # Generate sample dates
+        sample_dates = ["2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-05-01"]
+        # Sample portfolio values
+        portfolio_values = [10000, 10200, 10400, 10300, 10500]
+        # Generate S&P 500 benchmark values with slightly different performance
+        sp500_values = [10000, 10150, 10300, 10250, 10380]
+        # Calculate relative performance (percentage difference)
+        relative_performance = [(p/s - 1) * 100 for p, s in zip(portfolio_values, sp500_values)]
+        
         return {
             "allocations": optimized_weights,
             "metrics": {
@@ -683,11 +692,16 @@ async def analyze_portfolio_simple(request: Portfolio):
                 "leftover": 1000.0
             },
             "historical_performance": {
-                "dates": ["2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-05-01"],
-                "portfolio_values": [10000, 10200, 10400, 10300, 10500],
+                "dates": sample_dates,
+                "portfolio_values": portfolio_values,
                 "drawdowns": [0, 0, 0, -0.01, 0],
                 "rolling_volatility": [0.1, 0.12, 0.11, 0.13, 0.12],
                 "rolling_sharpe": [0.5, 0.6, 0.55, 0.5, 0.6]
+            },
+            "market_comparison": {
+                "dates": sample_dates,
+                "market_values": sp500_values,
+                "relative_performance": relative_performance
             }
         }
     except Exception as e:
