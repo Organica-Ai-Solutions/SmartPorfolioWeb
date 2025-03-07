@@ -304,27 +304,29 @@ type IconData = Awaited<ReturnType<typeof fetchSimpleIcons>>
 
 export function IconCloud({ tickers, onTickerSelect }: DynamicCloudProps) {
   const [data, setData] = useState<IconData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const { theme } = useTheme()
+  const { theme = "dark" } = useTheme()
+  
+  // Track loading state separately to show loading indicator
+  const [isLoading, setIsLoading] = useState(true);
+  // Track errors to display an error message
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    const slugs = tickers
-      .filter(ticker => {
-        // Check if the ticker exists in our mapping
-        const hasMapping = tickerToSlug[ticker];
-        if (!hasMapping) {
-          console.debug(`No icon mapping found for ticker: ${ticker}`);
-        }
-        return hasMapping;
-      })
-      .map(ticker => {
-        const slug = tickerToSlug[ticker];
-        console.debug(`Mapping ${ticker} to icon: ${slug}`);
-        return slug;
-      });
+    // Reset states when tickers change
+    setIsLoading(true);
+    setHasError(false);
     
-    if (slugs.length === 0) {
-      console.debug('No valid icons to display');
+    const slugs = tickers.map((ticker) => {
+      const hasMapping = tickerToSlug[ticker];
+      if (!hasMapping) {
+        console.debug(`No icon mapping found for ticker: ${ticker}`);
+      }
+      return hasMapping;
+    }).filter(Boolean) as string[];
+    
+    if (!slugs.length) {
+      console.debug('No mappable tickers provided');
+      setIsLoading(false);
       return;
     }
 
@@ -336,35 +338,75 @@ export function IconCloud({ tickers, onTickerSelect }: DynamicCloudProps) {
     .then(data => {
       console.debug('Successfully fetched icons:', Object.keys(data.simpleIcons));
       setData(data);
+      setIsLoading(false);
     })
-    .catch(err => {
-      console.error('Error fetching icons:', err);
-      setError('Failed to load icons');
+    .catch(error => {
+      console.error('Error fetching icons:', error);
+      setHasError(true);
+      setIsLoading(false);
     });
   }, [tickers]);
 
-  const renderedIcons = useMemo(() => {
-    if (!data) return null
+  const filteredIconData = useMemo(() => {
+    return filterIconsByTickers(data, tickers, theme, onTickerSelect)
+  }, [data, tickers, theme, onTickerSelect])
 
-    return Object.values(data.simpleIcons).map((icon) => {
+  // Show a loading indicator while icons are being fetched
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-blue-400">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
+        <span className="ml-3">Loading icons...</span>
+      </div>
+    );
+  }
+  
+  // Show an error message if fetching failed
+  if (hasError) {
+    return (
+      <div className="flex items-center justify-center h-64 text-red-400">
+        <p>Error loading icons. Please try refreshing the page.</p>
+      </div>
+    );
+  }
+
+  // If we have no mapped tickers or no data, show a message
+  if (!filteredIconData?.length) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-gray-400 p-4 text-center">
+        <p className="mb-2">No icons available for the selected tickers.</p>
+        <p className="text-sm">Try adding popular tickers like AAPL, GOOGL, MSFT, or crypto like BTC-USD, ETH-USD.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cloud-container mt-4" style={{ minHeight: '300px' }}>
+      <Cloud {...cloudProps}>{filteredIconData}</Cloud>
+    </div>
+  );
+}
+
+// Function to filter icons by tickers and render them
+const filterIconsByTickers = (
+  data: IconData | null, 
+  tickers: string[], 
+  theme: string,
+  onTickerSelect: (ticker: string) => void
+) => {
+  if (!data) return [];
+
+  return Object.values(data.simpleIcons)
+    .map((icon) => {
       // Find the ticker for this icon
-      const ticker = Object.entries(tickerToSlug).find(([_, slug]) => slug === icon.slug)?.[0]
-      if (!ticker) return null
+      const ticker = Object.entries(tickerToSlug).find(([_, slug]) => slug === icon.slug)?.[0];
+      if (!ticker) return null;
 
       return renderCustomIcon(
         icon,
-        theme || "light",
+        theme,
         () => onTickerSelect(ticker)
-      )
-    }).filter(Boolean)
-  }, [data, theme, onTickerSelect])
-
-  return (
-    <div className="w-full h-[500px] relative bg-black/20 rounded-lg overflow-hidden">
-      {/* @ts-ignore */}
-      <Cloud {...cloudProps}>
-        <>{renderedIcons}</>
-      </Cloud>
-    </div>
-  )
-} 
+      );
+    })
+    .filter(Boolean);
+}; 
