@@ -109,21 +109,28 @@ const fetchSimpleIcons = async (params: { slugs: string[] }) => {
           
           if (response.ok) {
             const svgText = await response.text();
+            console.debug(`SVG content for ${slug} (first 50 chars):`, svgText.substring(0, 50));
             
-            // Make sure we're only using the SVG content
-            const cleanedSvg = svgText
-              .replace(/<\?xml.*?\?>/, '') // Remove XML declaration
-              .replace(/<\!DOCTYPE.*?>/, '') // Remove DOCTYPE
-              .trim();
-            
-            // SVG needs to maintain viewBox and other attributes
-            const viewBoxMatch = cleanedSvg.match(/viewBox="([^"]+)"/);
-            const viewBox = viewBoxMatch ? viewBoxMatch[1] : '0 0 24 24';
+            // Create a simpler SVG structure if the original is complex
+            // This creates an SVG that just uses the path from the original
+            let simpleSvg = '';
+            try {
+              const pathMatch = svgText.match(/<path[^>]*?d="([^"]*)"[^>]*?>/);
+              if (pathMatch && pathMatch[1]) {
+                const pathD = pathMatch[1];
+                simpleSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="${pathD}"/></svg>`;
+              } else {
+                simpleSvg = svgText;
+              }
+            } catch (err) {
+              console.error(`Error extracting path from SVG for ${slug}:`, err);
+              simpleSvg = svgText;
+            }
             
             simpleIcons[slug] = {
               slug,
               title: slug,
-              svg: cleanedSvg,
+              svg: simpleSvg,
               path: '',
               hex: 'ffffff',
             };
@@ -272,45 +279,44 @@ const tickerToSlug: Record<string, string> = {
 };
 
 export const renderCustomIcon = (icon: SimpleIcon, theme: string, onClick?: () => void) => {
-  // Create style for the icon based on theme
-  const iconStyle = {
-    display: "inline-block",
-    width: "100%",
-    height: "100%",
-    color: theme === "dark" ? "#fff" : "#000",
-    fill: "currentColor",
-  };
-
   // Get icon SVG content if it exists from our custom fetching
   const customSvg = (icon as CustomSimpleIcon).svg;
   
+  // For direct debugging - log when we're rendering an icon
+  console.debug(`Rendering icon: ${icon.slug}`, customSvg ? 'Has SVG content' : 'No SVG content');
+  
   // If we have the SVG content from our custom fetching, render it directly
   if (customSvg) {
+    // Create a unique key for each icon to ensure proper rendering
+    const iconKey = `icon-${icon.slug}-${Math.random().toString(36).substr(2, 9)}`;
+    
     return (
       <a
-        key={icon.slug}
+        key={iconKey}
         href="#"
-        className="cloud-icon"
+        className="icon-cloud-item"
         onClick={(e) => {
           e.preventDefault();
           onClick?.();
         }}
         title={icon.title}
-        style={{
-          width: "42px",
-          height: "42px",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
+        data-weight="1"
       >
-        <div
-          style={iconStyle}
+        <span
+          style={{
+            display: 'inline-block',
+            width: '42px',
+            height: '42px',
+            color: theme === 'dark' ? '#fff' : '#000',
+          }}
           dangerouslySetInnerHTML={{ __html: customSvg }}
         />
       </a>
     );
   }
+  
+  // For debugging
+  console.debug(`Falling back to renderSimpleIcon for ${icon.slug}`);
 
   // Fallback to the original renderSimpleIcon behavior
   return renderSimpleIcon({
@@ -323,6 +329,8 @@ export const renderCustomIcon = (icon: SimpleIcon, theme: string, onClick?: () =
         e.preventDefault();
         onClick?.();
       },
+      // Type assertion to fix the linter error
+      ...({"data-weight": "1"} as any),
     },
   });
 };
@@ -342,11 +350,14 @@ export function IconCloud({ tickers, onTickerSelect }: DynamicCloudProps) {
   const [isLoading, setIsLoading] = useState(true);
   // Track errors to display an error message
   const [hasError, setHasError] = useState(false);
+  // Store the first icon SVG for direct display in debug mode
+  const [firstIconSvg, setFirstIconSvg] = useState<string | null>(null);
 
   useEffect(() => {
     // Reset states when tickers change
     setIsLoading(true);
     setHasError(false);
+    setFirstIconSvg(null);
     
     const slugs = tickers.map((ticker) => {
       const hasMapping = tickerToSlug[ticker];
@@ -371,6 +382,16 @@ export function IconCloud({ tickers, onTickerSelect }: DynamicCloudProps) {
       console.debug('Successfully fetched icons:', Object.keys(data.simpleIcons));
       setData(data);
       setIsLoading(false);
+      
+      // Store the first icon for direct display in debug mode
+      const icons = Object.values(data.simpleIcons);
+      if (icons.length > 0) {
+        const firstIcon = icons[0] as CustomSimpleIcon;
+        if (firstIcon.svg) {
+          setFirstIconSvg(firstIcon.svg);
+          console.debug('Stored first icon for debug view:', firstIcon.slug);
+        }
+      }
     })
     .catch(error => {
       console.error('Error fetching icons:', error);
@@ -408,6 +429,14 @@ export function IconCloud({ tickers, onTickerSelect }: DynamicCloudProps) {
       <div className="flex flex-col items-center justify-center h-64 text-gray-400 p-4 text-center">
         <p className="mb-2">No icons available for the selected tickers.</p>
         <p className="text-sm">Try adding popular tickers like AAPL, GOOGL, MSFT, or crypto like BTC-USD, ETH-USD.</p>
+        
+        {/* Show the first icon directly for debugging */}
+        {firstIconSvg && (
+          <div className="mt-8 flex flex-col items-center">
+            <p className="text-white mb-2">Debug: First Icon</p>
+            <div style={{ width: '64px', height: '64px', color: 'white' }} dangerouslySetInnerHTML={{ __html: firstIconSvg }} />
+          </div>
+        )}
       </div>
     );
   }
@@ -415,6 +444,14 @@ export function IconCloud({ tickers, onTickerSelect }: DynamicCloudProps) {
   return (
     <div className="cloud-container mt-4" style={{ minHeight: '300px' }}>
       <Cloud {...cloudProps}>{filteredIconData}</Cloud>
+      
+      {/* Show the first icon directly for debugging */}
+      {firstIconSvg && (
+        <div className="mt-8 flex flex-col items-center">
+          <p className="text-white mb-2">Debug: First Icon</p>
+          <div style={{ width: '64px', height: '64px', color: 'white', fill: 'currentColor' }} dangerouslySetInnerHTML={{ __html: firstIconSvg }} />
+        </div>
+      )}
     </div>
   );
 }
