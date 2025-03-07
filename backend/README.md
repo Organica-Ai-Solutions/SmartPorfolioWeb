@@ -25,7 +25,7 @@ This is the backend API for the Smart Portfolio application, built with FastAPI.
 
 ## Deployment
 
-The backend is configured for deployment on Render.com using Docker.
+The backend can be deployed to various cloud platforms:
 
 ### Environment Variables
 
@@ -35,7 +35,20 @@ The following environment variables need to be set in the deployment environment
 - `ENCRYPTION_KEY`: Key for encrypting sensitive data
 - `DATABASE_URL`: Connection string for the database (if applicable)
 
-### Deployment Steps
+### Google Cloud Run Deployment
+
+The backend is configured for deployment on Google Cloud Run using Docker.
+
+For detailed deployment instructions, see [DEPLOY_GCP.md](./DEPLOY_GCP.md).
+
+Quick steps:
+1. Set up a Google Cloud project
+2. Build and deploy the Docker image to Cloud Run
+3. Update the frontend environment variables with the Cloud Run service URL
+
+### Render.com Deployment (Alternative)
+
+Alternatively, the backend can be deployed on Render.com:
 
 1. Push the code to a GitHub repository
 2. Connect the repository to Render.com
@@ -46,5 +59,5 @@ The following environment variables need to be set in the deployment environment
 ## API Documentation
 
 Once deployed, the API documentation is available at:
-- Swagger UI: `https://[your-render-service-url]/docs`
-- ReDoc: `https://[your-render-service-url]/redoc` 
+- Swagger UI: `https://[your-service-url]/docs`
+- ReDoc: `https://[your-service-url]/redoc` 

@@ -1,0 +1,32 @@
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/smartportfolio-backend', '.']
+  
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/smartportfolio-backend']
+  
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'smartportfolio-backend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/smartportfolio-backend'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'OPENAI_API_KEY=${_OPENAI_API_KEY},ENCRYPTION_KEY=${_ENCRYPTION_KEY}'
+
+images:
+  - 'gcr.io/$PROJECT_ID/smartportfolio-backend'
+
+substitutions:
+  _OPENAI_API_KEY: ''  # Will be provided during deployment
+  _ENCRYPTION_KEY: ''  # Will be provided during deployment 
