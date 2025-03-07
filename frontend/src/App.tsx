@@ -363,12 +363,19 @@ function App() {
               className="text-center mb-8 flex justify-between items-center"
             >
               <div className="flex-1">
-              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-purple-500 mb-4">
-                Smart Portfolio Manager
-              </h1>
-              <p className="text-lg md:text-xl text-gray-300">
-                Optimize your investments with AI-powered portfolio analysis
-              </p>
+                <div className="relative">
+                  <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-purple-500 to-indigo-400 mb-4 tracking-tight leading-none">
+                    <span className="inline-block transform hover:scale-105 transition-transform duration-300">Smart</span>
+                    <span className="inline-block transform hover:scale-105 transition-transform duration-300 ml-3">Portfolio</span> 
+                    <span className="relative inline-block transform hover:scale-105 transition-transform duration-300">
+                      AI<span className="absolute -top-3 right-0 text-xs bg-gradient-to-r from-blue-500 to-purple-500 px-2 py-0.5 rounded-full text-white font-medium tracking-wide">PRO</span>
+                    </span>
+                  </h1>
+                  <div className="absolute -bottom-2 left-0 right-0 h-1 bg-gradient-to-r from-blue-600/0 via-purple-500/50 to-indigo-400/0 blur-sm"></div>
+                </div>
+                <p className="text-lg md:text-xl text-gray-300 mt-6">
+                  <span className="text-blue-400 font-medium">Empower</span> your investment decisions with <span className="text-purple-400 font-medium">AI-driven</span> portfolio intelligence
+                </p>
               </div>
               
               {/* Settings Button */}
