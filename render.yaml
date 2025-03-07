@@ -10,7 +10,6 @@ services:
       - key: DEEPSEEK_API_KEY
         sync: false
       - key: DEEPSEEK_API_URL
-        sync: false
         value: https://api.deepseek.com/v1
       - key: ENCRYPTION_KEY
         sync: false
