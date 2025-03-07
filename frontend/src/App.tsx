@@ -21,7 +21,6 @@ import { PortfolioSummary } from './components/PortfolioSummary'
 import { AssetMetricsDetail } from './components/AssetMetricsDetail'
 import { HeaderComponent } from './components/HeaderComponent'
 import { HeroComponent } from './components/HeroComponent'
-import { PortfolioTab } from './components/PortfolioTab'
 
 ChartJS.register(
   ArcElement,
@@ -38,6 +37,37 @@ ChartJS.register(
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001'
 
 type TimePeriod = '3m' | '6m' | '1y' | '5y' | 'max'
+
+// Define TabButton component - this is missing and causing the error
+interface TabButtonProps {
+  name: string;
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+  children: React.ReactNode;
+}
+
+const TabButton = ({ name, activeTab, setActiveTab, children }: TabButtonProps) => {
+  return (
+    <button
+      className={`px-4 py-2 font-medium text-sm border-b-2 ${
+        activeTab === name
+          ? 'border-blue-500 text-blue-500'
+          : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+      } transition-colors`}
+      onClick={() => setActiveTab(name)}
+    >
+      {children}
+    </button>
+  );
+};
+
+// Define a simple StockDataType to fix the error
+type StockDataType = {
+  symbol: string;
+  name?: string;
+  price?: number;
+  change?: number;
+};
 
 // Function to calculate start date based on period
 const getStartDate = (period: TimePeriod): string => {
@@ -478,10 +508,16 @@ function App() {
                     )}
                   </div>
                   
-                  {/* Analysis Results Section */}
+                  {/* Analysis Results Section - Only show when analysis data exists */}
                   {analysis && (
                     <div className="mt-8 border-t border-gray-700 pt-6">
                       <h2 className="text-2xl font-bold mb-6">Portfolio Analysis Results</h2>
+                      
+                      {/* Debug Info */}
+                      <div className="mb-4 p-4 bg-blue-900/50 rounded-lg">
+                        <p className="font-medium">Analysis data loaded successfully!</p>
+                        <p>Keys: {Object.keys(analysis).join(', ')}</p>
+                      </div>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                         {/* Allocation Chart */}
@@ -493,7 +529,11 @@ function App() {
                         {/* Performance Chart */}
                         <div className="bg-slate-800 p-4 rounded-lg">
                           <h3 className="text-xl font-semibold mb-4">Performance History</h3>
-                          {chartData && <PerformanceChart data={chartData} />}
+                          {chartData ? (
+                            <PerformanceChart data={chartData} />
+                          ) : (
+                            <p>Chart data not available</p>
+                          )}
                         </div>
                       </div>
                       
@@ -519,6 +559,33 @@ function App() {
                           </div>
                         </div>
                       </div>
+                      
+                      {/* Asset Metrics */}
+                      <div className="bg-slate-800 p-4 rounded-lg mb-6">
+                        <h3 className="text-xl font-semibold mb-4">Asset Details</h3>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-slate-700">
+                            <thead>
+                              <tr>
+                                <th className="px-4 py-2 text-left text-sm font-medium text-slate-400">Asset</th>
+                                <th className="px-4 py-2 text-left text-sm font-medium text-slate-400">Weight</th>
+                                <th className="px-4 py-2 text-left text-sm font-medium text-slate-400">Return</th>
+                                <th className="px-4 py-2 text-left text-sm font-medium text-slate-400">Risk</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-700">
+                              {Object.entries(analysis.asset_metrics).map(([ticker, metrics]) => (
+                                <tr key={ticker}>
+                                  <td className="px-4 py-2 font-medium">{ticker}</td>
+                                  <td className="px-4 py-2">{(metrics.weight * 100).toFixed(2)}%</td>
+                                  <td className="px-4 py-2">{(metrics.annual_return * 100).toFixed(2)}%</td>
+                                  <td className="px-4 py-2">{(metrics.annual_volatility * 100).toFixed(2)}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -534,5 +601,26 @@ function App() {
     </TooltipProvider>
   )
 }
+
+// Define a WatchlistTab component
+const WatchlistTab = ({ stockData }: { stockData: StockDataType[] }) => {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-4">Watchlist</h2>
+      {stockData.length === 0 ? (
+        <p>No stocks in your watchlist yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {stockData.map((stock) => (
+            <li key={stock.symbol} className="p-3 bg-slate-800 rounded-lg flex justify-between">
+              <span>{stock.symbol}</span>
+              {stock.price && <span>${stock.price.toFixed(2)}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
 
 export default App
