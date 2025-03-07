@@ -538,35 +538,128 @@ function App() {
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                         {/* Allocation Chart */}
-                        <div className="bg-slate-800 p-4 rounded-lg">
-                          <h3 className="text-xl font-semibold mb-4">Asset Allocation</h3>
+                        <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30">
+                          <h3 className="text-xl font-semibold mb-4 text-blue-400">Asset Allocation</h3>
                           <AllocationChart allocations={analysis.allocations} />
                         </div>
                         
                         {/* Performance Chart */}
-                        <div className="bg-slate-800 p-4 rounded-lg">
-                          <h3 className="text-xl font-semibold mb-4">Performance History</h3>
+                        <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30">
+                          <h3 className="text-xl font-semibold mb-4 text-blue-400">Performance History</h3>
                           {chartData && <PerformanceChart data={chartData} />}
                         </div>
                       </div>
                       
-                      {/* Portfolio Metrics - Restore to original */}
-                      <div className="bg-slate-800 p-4 rounded-lg mb-6">
-                        <h3 className="text-xl font-semibold mb-4">Portfolio Summary</h3>
-                        <PortfolioSummary analysis={analysis} />
+                      {/* Portfolio Metrics - Fix the props */}
+                      <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30 mb-6">
+                        <h3 className="text-xl font-semibold mb-4 text-blue-400">Portfolio Summary</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                          <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
+                            <div className="text-slate-400 text-sm">Expected Return</div>
+                            <div className="text-xl font-bold text-green-400">{(analysis.metrics.expected_return * 100).toFixed(2)}%</div>
+                          </div>
+                          <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
+                            <div className="text-slate-400 text-sm">Volatility</div>
+                            <div className="text-xl font-bold text-yellow-400">{(analysis.metrics.volatility * 100).toFixed(2)}%</div>
+                          </div>
+                          <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
+                            <div className="text-slate-400 text-sm">Sharpe Ratio</div>
+                            <div className="text-xl font-bold text-blue-400">{analysis.metrics.sharpe_ratio.toFixed(2)}</div>
+                          </div>
+                          <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
+                            <div className="text-slate-400 text-sm">Max Drawdown</div>
+                            <div className="text-xl font-bold text-red-400">{(analysis.metrics.max_drawdown * 100).toFixed(2)}%</div>
+                          </div>
+                        </div>
                       </div>
                       
-                      {/* Asset Metrics - Restore to original */}
-                      <div className="bg-slate-800 p-4 rounded-lg mb-6">
-                        <h3 className="text-xl font-semibold mb-4">Asset Metrics</h3>
-                        <AssetMetricsDetail assetMetrics={analysis.asset_metrics} />
+                      {/* Asset Metrics - Fix the props */}
+                      <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30 mb-6">
+                        <h3 className="text-xl font-semibold mb-4 text-blue-400">Asset Metrics</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {Object.entries(analysis.asset_metrics).map(([ticker, metrics]) => (
+                            <div key={ticker} className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
+                              <div className="flex justify-between items-center mb-3">
+                                <h4 className="text-lg font-semibold text-purple-400">{ticker}</h4>
+                                <span className="text-blue-300 font-medium">{(metrics.weight * 100).toFixed(2)}% Weight</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Return:</span>
+                                  <span className="font-medium text-green-400">{(metrics.annual_return * 100).toFixed(2)}%</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Risk:</span>
+                                  <span className="font-medium text-yellow-400">{(metrics.annual_volatility * 100).toFixed(2)}%</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Beta:</span>
+                                  <span className="font-medium text-blue-400">{metrics.beta.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Alpha:</span>
+                                  <span className="font-medium text-purple-400">{((metrics.alpha || 0) * 100).toFixed(2)}%</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                       
-                      {/* AI Insights - Restore this section */}
+                      {/* AI Insights - With improved styling */}
                       {analysis.ai_insights && (
-                        <div className="bg-slate-800 p-4 rounded-lg mb-6">
-                          <h3 className="text-xl font-semibold mb-4">AI Insights</h3>
-                          <PortfolioExplanation analysis={analysis} />
+                        <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30 mb-6">
+                          <h3 className="text-xl font-semibold mb-4 text-blue-400">AI Insights</h3>
+                          <div className="bg-[#0a0a17] p-5 rounded-lg border border-indigo-900/20">
+                            <div className="flex items-start gap-4">
+                              <div className="p-2 bg-blue-900/30 rounded-full">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <h4 className="text-lg font-semibold text-green-400 mb-2">Portfolio Analysis</h4>
+                                <p className="text-white/90 mb-4">
+                                  {analysis.ai_insights.explanations && 
+                                   typeof analysis.ai_insights.explanations === 'object' ? 
+                                   (analysis.ai_insights.explanations.english?.summary || 
+                                    "Your portfolio has been analyzed successfully.") : 
+                                   "Your portfolio has been analyzed successfully."}
+                                </p>
+                                
+                                {analysis.ai_insights.recommendations && analysis.ai_insights.recommendations.length > 0 && (
+                                  <div className="mt-4">
+                                    <h5 className="text-md font-semibold text-yellow-400 mb-2">Recommendations</h5>
+                                    <ul className="list-disc list-inside space-y-1 text-white/80">
+                                      {analysis.ai_insights.recommendations.map((rec, idx) => (
+                                        <li key={idx}>{rec}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                                
+                                {analysis.ai_insights.market_outlook && (
+                                  <div className="mt-4 p-3 bg-[#121a2a] rounded-lg">
+                                    <h5 className="text-md font-semibold text-blue-400 mb-2">Market Outlook</h5>
+                                    <div className="grid grid-cols-3 gap-2 text-sm">
+                                      <div className="bg-[#0a0a17] p-2 rounded">
+                                        <div className="text-slate-400">Short Term</div>
+                                        <div className="font-medium text-blue-400">{analysis.ai_insights.market_outlook.short_term}</div>
+                                      </div>
+                                      <div className="bg-[#0a0a17] p-2 rounded">
+                                        <div className="text-slate-400">Medium Term</div>
+                                        <div className="font-medium text-blue-400">{analysis.ai_insights.market_outlook.medium_term}</div>
+                                      </div>
+                                      <div className="bg-[#0a0a17] p-2 rounded">
+                                        <div className="text-slate-400">Long Term</div>
+                                        <div className="font-medium text-blue-400">{analysis.ai_insights.market_outlook.long_term}</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
