@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: smartportfolio-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    rootDir: backend
+    plan: free
+    healthCheckPath: /test
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false 
