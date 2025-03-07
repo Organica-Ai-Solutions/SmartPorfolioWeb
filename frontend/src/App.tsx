@@ -21,6 +21,7 @@ import { PortfolioSummary } from './components/PortfolioSummary'
 import { AssetMetricsDetail } from './components/AssetMetricsDetail'
 import { HeaderComponent } from './components/HeaderComponent'
 import { HeroComponent } from './components/HeroComponent'
+import { PortfolioTab } from './components/PortfolioTab'
 
 ChartJS.register(
   ArcElement,
@@ -62,13 +63,14 @@ const getStartDate = (period: TimePeriod): string => {
 }
 
 function App() {
-  const [loading, setLoading] = useState(false);
-  const [stockData, setStockData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [stockData, setStockData] = useState<StockDataType[]>([]);
   const [portfolio, setPortfolio] = useState<Portfolio>({
     tickers: [],
     start_date: getStartDate('1y'), // Default to 1 year
     risk_tolerance: 'medium'
   });
+  const [activeTab, setActiveTab] = useState('portfolio');
   const [newTicker, setNewTicker] = useState('')
   const [analysis, setAnalysis] = useState<PortfolioAnalysis | null>(null)
   const [error, setError] = useState('')
@@ -96,23 +98,11 @@ function App() {
 
   const analyzePortfolio = async () => {
     try {
-      console.log("analyzePortfolio function called");
-      console.log("Current portfolio state:", portfolio);
-      
-      // Check if portfolio has tickers
-      if (!portfolio.tickers || portfolio.tickers.length === 0) {
-        console.error("No tickers in portfolio");
-        setError('Please add at least one ticker to your portfolio');
-        return;
-      }
-      
       setIsAnalyzing(true);
       setError('');
       
       console.log("Analyzing portfolio with tickers:", portfolio.tickers);
-      console.log("API URL being used:", API_URL);
       
-      console.log("Making fetch request to:", `${API_URL}/ai-portfolio-analysis`);
       const response = await fetch(`${API_URL}/ai-portfolio-analysis`, {
         method: 'POST',
         headers: {
@@ -125,11 +115,8 @@ function App() {
         }),
       });
       
-      console.log("Fetch response received:", response);
-      
       if (!response.ok) {
         const errorData = await response.json();
-        console.error("API error response:", errorData);
         throw new Error(errorData.detail || 'Failed to analyze portfolio');
       }
       
@@ -138,17 +125,13 @@ function App() {
       
       // Validate that we have the required data
       if (!data.allocations || !data.historical_performance) {
-        console.error("Invalid response data - missing allocations or historical_performance");
         throw new Error('Invalid response data');
       }
       
-      console.log("Setting analysis state with data:", data);
       setAnalysis(data);
       
       // Prepare chart data
-      console.log("Preparing chart data");
       const chartData = prepareChartData(data);
-      console.log("Chart data prepared:", chartData);
       setChartData(chartData);
       
     } catch (err: any) {
@@ -388,111 +371,163 @@ function App() {
               transition={{ duration: 0.5, delay: 0.2 }}
               className="relative bg-[#0a0a0a]/95 backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-2xl border border-white/10 mt-8"
             >
-              <div className="space-y-10">
-                {/* AI Ticker Suggestions */}
-      <div>
-                  <h2 className="text-2xl font-bold text-center mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
-                    AI Ticker Suggestions
-                  </h2>
-                  
-                  {/* Selected Tickers Display */}
-                  <div className="mb-6 flex flex-wrap gap-2">
-                    {portfolio.tickers.map((ticker) => (
-                      <motion.div
-                        key={ticker}
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        exit={{ scale: 0 }}
-                        className="px-3 py-1.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-lg
-                                 border border-purple-500/30 text-white flex items-center gap-2"
-                      >
-                        <span className="font-medium">{ticker}</span>
-                        <button
-                          onClick={() => removeTicker(ticker)}
-                          className="hover:bg-white/10 rounded-full w-5 h-5 flex items-center justify-center
-                                   transition-colors text-purple-400 hover:text-purple-300"
-                        >
-                          ×
-                        </button>
-                      </motion.div>
-                    ))}
-                  </div>
-                  
-                  <TickerSuggestions onSelectTicker={addTicker} />
+              <div className="border-b border-gray-700 mb-8">
+                <nav className="-mb-px flex space-x-8">
+                  <TabButton
+                    name="portfolio"
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                  >
+                    Portfolio
+                  </TabButton>
+                  <TabButton
+                    name="watchlist"
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                  >
+                    Watchlist
+                  </TabButton>
+                </nav>
                 </div>
 
-                {/* Time Period and Risk Selection */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Time Period Selector */}
-                  <div className="flex gap-2 justify-start items-center flex-wrap">
-                    {(['3m', '6m', '1y', '5y', 'max'] as TimePeriod[]).map((period) => (
+              {activeTab === 'portfolio' && (
+                <div>
+                  {/* Portfolio Management Section */}
+                  <div className="mb-6">
+                    <h2 className="text-2xl font-bold mb-4">Portfolio Management</h2>
+                    
+                    {/* Ticker Input */}
+                    <div className="mb-4">
+                      <TickerSuggestions onSelectTicker={addTicker} />
+                    </div>
+                    
+                    {/* Selected Tickers */}
+                    <div className="mb-4">
+                      <h3 className="text-xl font-semibold mb-2">Selected Tickers</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {portfolio.tickers.map(ticker => (
+                          <div 
+                            key={ticker}
+                            className="bg-slate-700 px-3 py-1 rounded-full flex items-center gap-2"
+                          >
+                            <span>{ticker}</span>
+                            <button 
+                              onClick={() => removeTicker(ticker)}
+                              className="text-slate-400 hover:text-white"
+                            >
+                              &times;
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    {/* Risk Tolerance */}
+                    <div className="mb-4">
+                      <h3 className="text-xl font-semibold mb-2">Risk Tolerance</h3>
+                      <select
+                        value={portfolio.risk_tolerance}
+                        onChange={(e) => setPortfolio({...portfolio, risk_tolerance: e.target.value})}
+                        className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 w-full"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                      </select>
+                    </div>
+                    
+                    {/* Analysis Period */}
+                    <div className="mb-4">
+                      <h3 className="text-xl font-semibold mb-2">Analysis Period</h3>
+                      <select
+                        onChange={(e) => handlePeriodChange(e.target.value as TimePeriod)}
+                        className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 w-full"
+                      >
+                        <option value="3m">3 Months</option>
+                        <option value="6m">6 Months</option>
+                        <option value="1y" selected>1 Year</option>
+                        <option value="5y">5 Years</option>
+                        <option value="max">Max</option>
+                      </select>
+                    </div>
+                    
+                    {/* Analyze Button */}
+                    <div className="mb-4 flex flex-col md:flex-row gap-4">
                       <button
-                        key={period}
-                        onClick={() => handlePeriodChange(period)}
-                        className={`px-4 py-2 rounded-full transition-all ${
-                          portfolio.start_date === getStartDate(period)
-                            ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white'
-                            : 'bg-white/5 hover:bg-white/10 text-white/80'
-                        }`}
+                        onClick={analyzePortfolio}
+                        disabled={loading || portfolio.tickers.length === 0 || !portfolio.start_date}
+                        className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {period.toUpperCase()}
+                        {isAnalyzing ? 'Analyzing...' : 'Analyze Portfolio'}
                       </button>
-                    ))}
+                      
+                      <button
+                        onClick={rebalancePortfolio}
+                        disabled={!analysis || loading}
+                        className="px-6 py-3 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {loading ? 'Rebalancing...' : 'Rebalance Portfolio'}
+                      </button>
+                    </div>
+                    
+                    {/* Error Message */}
+                    {error && (
+                      <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                        {error}
+                      </div>
+                    )}
                   </div>
-
-                  {/* Risk Tolerance Selector */}
-                  <select
-                    value={portfolio.risk_tolerance}
-                    onChange={(e) => setPortfolio({ ...portfolio, risk_tolerance: e.target.value as 'low' | 'medium' | 'high' })}
-                    className="px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value="low">Low Risk</option>
-                    <option value="medium">Medium Risk</option>
-                    <option value="high">High Risk</option>
-                  </select>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex flex-col md:flex-row gap-4 justify-center">
-                  <button
-                    onClick={(e) => {
-                      console.log('Analyze button clicked', e);
-                      console.log('Button disabled state:', loading || portfolio.tickers.length === 0 || !portfolio.start_date);
-                      console.log('Portfolio tickers:', portfolio.tickers);
-                      console.log('Portfolio start_date:', portfolio.start_date);
-                      console.log('Loading state:', loading);
-                      analyzePortfolio();
-                    }}
-                    disabled={loading || portfolio.tickers.length === 0 || !portfolio.start_date}
-                    className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg font-medium 
-                             hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed
-                             w-full md:w-auto text-center"
-                  >
-                    {isAnalyzing ? 'Analyzing...' : 'Analyze Portfolio'}
-                  </button>
                   
-                  <button
-                    onClick={rebalancePortfolio}
-                    disabled={!analysis || loading}
-                    className="px-8 py-4 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg font-medium 
-                             hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed
-                             w-full md:w-auto text-center"
-                  >
-                    {loading ? 'Rebalancing...' : 'Rebalance Portfolio'}
-                  </button>
+                  {/* Analysis Results Section */}
+                  {analysis && (
+                    <div className="mt-8 border-t border-gray-700 pt-6">
+                      <h2 className="text-2xl font-bold mb-6">Portfolio Analysis Results</h2>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        {/* Allocation Chart */}
+                        <div className="bg-slate-800 p-4 rounded-lg">
+                          <h3 className="text-xl font-semibold mb-4">Asset Allocation</h3>
+                          <AllocationChart allocations={analysis.allocations} />
+                        </div>
+                        
+                        {/* Performance Chart */}
+                        <div className="bg-slate-800 p-4 rounded-lg">
+                          <h3 className="text-xl font-semibold mb-4">Performance History</h3>
+                          {chartData && <PerformanceChart data={chartData} />}
+                        </div>
+                      </div>
+                      
+                      {/* Portfolio Metrics */}
+                      <div className="bg-slate-800 p-4 rounded-lg mb-6">
+                        <h3 className="text-xl font-semibold mb-4">Portfolio Metrics</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="bg-slate-700 p-3 rounded-lg">
+                            <div className="text-slate-400 text-sm">Expected Return</div>
+                            <div className="text-xl font-bold">{(analysis.metrics.expected_return * 100).toFixed(2)}%</div>
+                          </div>
+                          <div className="bg-slate-700 p-3 rounded-lg">
+                            <div className="text-slate-400 text-sm">Volatility</div>
+                            <div className="text-xl font-bold">{(analysis.metrics.volatility * 100).toFixed(2)}%</div>
+                          </div>
+                          <div className="bg-slate-700 p-3 rounded-lg">
+                            <div className="text-slate-400 text-sm">Sharpe Ratio</div>
+                            <div className="text-xl font-bold">{analysis.metrics.sharpe_ratio.toFixed(2)}</div>
+                          </div>
+                          <div className="bg-slate-700 p-3 rounded-lg">
+                            <div className="text-slate-400 text-sm">Max Drawdown</div>
+                            <div className="text-xl font-bold">{(analysis.metrics.max_drawdown * 100).toFixed(2)}%</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                
-                {/* Error Message Display */}
-                {error && (
-                  <div className="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-                    <p className="font-medium">Error: {error}</p>
-                  </div>
-                )}
-              </div>
+              )}
+              {activeTab === 'watchlist' && <WatchlistTab stockData={stockData} />}
             </motion.div>
           </div>
         </div>
-        
+
         {/* Settings Dialog */}
         <Settings isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       </div>
