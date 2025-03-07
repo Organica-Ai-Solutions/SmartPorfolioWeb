@@ -154,7 +154,7 @@ def calculate_portfolio_metrics(data: pd.DataFrame, weights: Dict[str, float]) -
                 "annual_return": annual_return,
                 "annual_volatility": annual_vol,
                 "beta": beta,
-                "weight": float(weights[ticker])
+                    "weight": float(weights[ticker])
             }
         
         return result
@@ -270,11 +270,11 @@ def optimize_portfolio(mu: np.ndarray, S: np.ndarray, risk_tolerance: str, ticke
         except Exception as alloc_error:
             print(f"Error calculating discrete allocation: {str(alloc_error)}")
             # Keep the default empty discrete allocation
-        
-        return {
+            
+            return {
             "weights": weights,
-            "metrics": {
-                "expected_return": float(expected_return),
+                "metrics": {
+                    "expected_return": float(expected_return),
                 "volatility": float(volatility),
                 "sharpe_ratio": float(sharpe_ratio)
             },
@@ -502,7 +502,7 @@ async def analyze_portfolio(request: Portfolio):
                         raise e
                 
                 # Check if we got any data
-                if data.empty:
+        if data.empty:
                     raise ValueError("No data returned from Yahoo Finance")
                 
                 # If it's a Series (single ticker), convert to DataFrame
@@ -599,9 +599,6 @@ async def analyze_portfolio_simple(request: Portfolio):
     try:
         print(f"Analyzing portfolio (simple) for tickers: {request.tickers}")
         
-        # Mock weights proportionate to the number of tickers
-        mock_weights = {ticker: 1.0/len(request.tickers) for ticker in request.tickers}
-        
         # Helper function to generate realistic mock metrics based on ticker
         def generate_ticker_metrics(ticker):
             # Generate pseudo-random but consistent values based on ticker name
@@ -623,28 +620,53 @@ async def analyze_portfolio_simple(request: Portfolio):
                 "annual_return": return_factor,
                 "annual_volatility": volatility_factor,
                 "beta": beta_factor,
-                "weight": mock_weights[ticker],
                 "alpha": alpha_factor,
                 "volatility": volatility_factor,
                 "var_95": -volatility_factor * 1.65 / math.sqrt(252),  # Simplified VaR calculation
                 "max_drawdown": max_drawdown,
-                "correlation": 0.3 + (seed % 0.5)  # Correlation between 0.3 and 0.8
+                "correlation": 0.3 + (seed % 0.5),  # Correlation between 0.3 and 0.8
+                "sharpe_ratio": (return_factor - 0.02) / volatility_factor if volatility_factor > 0 else 0,
+                "sortino_ratio": ((return_factor - 0.02) / volatility_factor) * 1.2 if volatility_factor > 0 else 0,
             }
+        
+        # Generate varied weights based on return/risk characteristics
+        def generate_optimized_weights(tickers, asset_metrics):
+            raw_scores = {}
+            for ticker in tickers:
+                metrics = asset_metrics[ticker]
+                # Score based on a simplified risk-adjusted return formula
+                score = (metrics["annual_return"] / max(0.01, metrics["volatility"])) + (0.5 - abs(metrics["beta"] - 1))
+                raw_scores[ticker] = max(0.1, score)  # Ensure minimal weight
+            
+            # Normalize to sum to 1
+            total_score = sum(raw_scores.values())
+            return {ticker: score / total_score for ticker, score in raw_scores.items()}
         
         # Generate asset metrics
         asset_metrics = {ticker: generate_ticker_metrics(ticker) for ticker in request.tickers}
         
+        # Generate optimized weights
+        optimized_weights = generate_optimized_weights(request.tickers, asset_metrics)
+        
+        # Update asset metrics with weights
+        for ticker, weight in optimized_weights.items():
+            asset_metrics[ticker]["weight"] = weight
+        
         # Calculate portfolio metrics
-        portfolio_return = sum(metrics["annual_return"] * mock_weights[ticker] for ticker, metrics in asset_metrics.items())
-        portfolio_volatility = 0.15  # Simplified; in reality would use covariance matrix
-        portfolio_beta = sum(metrics["beta"] * mock_weights[ticker] for ticker, metrics in asset_metrics.items())
+        portfolio_return = sum(metrics["annual_return"] * optimized_weights[ticker] for ticker, metrics in asset_metrics.items())
+        
+        # Calculate weighted average volatility (simplified; should use covariance matrix)
+        portfolio_volatility = sum(metrics["volatility"] * optimized_weights[ticker] for ticker, metrics in asset_metrics.items())
+        
+        # Calculate other portfolio metrics
+        portfolio_beta = sum(metrics["beta"] * optimized_weights[ticker] for ticker, metrics in asset_metrics.items())
         portfolio_sharpe = (portfolio_return - 0.02) / portfolio_volatility if portfolio_volatility > 0 else 0
         portfolio_sortino = portfolio_sharpe * 1.2  # Simplified
         portfolio_var = -portfolio_volatility * 1.65 / math.sqrt(252)
         portfolio_max_dd = min(metrics["max_drawdown"] for metrics in asset_metrics.values()) * 0.8  # Simplified
         
         return {
-            "allocations": mock_weights,
+            "allocations": optimized_weights,
             "metrics": {
                 "expected_return": portfolio_return,
                 "volatility": portfolio_volatility,
@@ -657,7 +679,7 @@ async def analyze_portfolio_simple(request: Portfolio):
             },
             "asset_metrics": asset_metrics,
             "discrete_allocation": {
-                "shares": {ticker: int(10000 * mock_weights[ticker] / 100) for ticker in request.tickers},
+                "shares": {ticker: int(10000 * optimized_weights[ticker] / 100) for ticker in request.tickers},
                 "leftover": 1000.0
             },
             "historical_performance": {
@@ -716,11 +738,11 @@ async def rebalance_portfolio(allocation: PortfolioAllocation):
         # Initialize Alpaca client
         try:
             trading_client = TradingClient(api_key, secret_key, paper=use_paper)
-            
+
             # Test the connection by getting account info
-            account = trading_client.get_account()
-            equity = float(account.equity)
-            print(f"Account equity: ${equity}")
+        account = trading_client.get_account()
+        equity = float(account.equity)
+        print(f"Account equity: ${equity}")
         except Exception as e:
             raise HTTPException(
                 status_code=401,

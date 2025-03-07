@@ -30,6 +30,8 @@ export interface AssetMetrics {
     volatility?: number;
     var_95?: number;
     max_drawdown?: number;
+    sharpe_ratio?: number;
+    sortino_ratio?: number;
 }
 
 export interface TechnicalIndicators {

@@ -18,6 +18,7 @@ import { RebalanceExplanation } from './components/RebalanceExplanation'
 import { AllocationChart } from './components/AllocationChart'
 import { PerformanceChart } from './components/PerformanceChart'
 import { PortfolioSummary } from './components/PortfolioSummary'
+import { AssetMetricsDetail } from './components/AssetMetricsDetail'
 
 ChartJS.register(
   ArcElement,
@@ -775,62 +776,18 @@ function App() {
                       </div>
                     </div>
 
-                    {/* Asset Metrics */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+                    {/* Asset Metrics Detail Section */}
+                    {analysis && analysis.asset_metrics && Object.keys(analysis.asset_metrics).length > 0 && (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
                         {Object.entries(analysis.asset_metrics).map(([ticker, assetMetric]) => (
-                        <div key={ticker} className="bg-[#2a2a2a]/95 backdrop-blur-md border border-white/20 rounded-xl p-6">
-                          <h3 className="font-semibold mb-4 text-purple-400">{ticker} Metrics</h3>
-                          <div className="space-y-3 text-white">
-                              {analysis && analysis.metrics && (
-                                <>
-                            <p className="flex justify-between">
-                                    <span>Expected Return:</span>
-                                    <span className="font-medium text-green-400">
-                                      {(analysis.metrics.expected_return * 100).toFixed(2)}%
-                              </span>
-                            </p>
-                            <p className="flex justify-between">
-                                    <span>Volatility:</span>
-                                    <span className="font-medium text-yellow-400">
-                                      {(analysis.metrics.volatility * 100).toFixed(2)}%
-                              </span>
-                            </p>
-                            <p className="flex justify-between">
-                                    <span>Sharpe Ratio:</span>
-                                    <span className="font-medium text-blue-400">
-                                      {analysis.metrics.sharpe_ratio.toFixed(2)}
-                              </span>
-                            </p>
-                            <p className="flex justify-between">
-                                    <span>Sortino Ratio:</span>
-                                    <span className="font-medium text-purple-400">
-                                      {analysis.metrics.sortino_ratio.toFixed(2)}
-                                    </span>
-                                  </p>
-                                  <p className="flex justify-between">
-                                    <span>Market Beta:</span>
-                                    <span className={`font-medium ${analysis.metrics.beta > 1 ? 'text-red-400' : 'text-green-400'}`}>
-                                      {analysis.metrics.beta.toFixed(2)}
-                                    </span>
-                                  </p>
-                                  <p className="flex justify-between">
-                                    <span>Maximum Drawdown:</span>
-                              <span className="font-medium text-red-400">
-                                      {(analysis.metrics.max_drawdown * 100).toFixed(2)}%
-                              </span>
-                            </p>
-                            <p className="flex justify-between">
-                                    <span>Value at Risk (95%):</span>
-                                    <span className="font-medium text-orange-400">
-                                      {(analysis.metrics.var_95 * 100).toFixed(2)}%
-                              </span>
-                            </p>
-                                </>
-                              )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                          <AssetMetricsDetail 
+                            key={ticker} 
+                            ticker={ticker} 
+                            metrics={assetMetric}
+                          />
+                        ))}
+                      </div>
+                    )}
                     </div>
                   </motion.div>
                 )}
