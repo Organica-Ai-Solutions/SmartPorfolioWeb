@@ -537,16 +537,34 @@ function App() {
                       <h2 className="text-2xl font-bold mb-6">Portfolio Analysis Results</h2>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        {/* Allocation Chart */}
+                        {/* Performance Chart - Enhanced with S&P 500 comparison */}
                         <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30">
-                          <h3 className="text-xl font-semibold mb-4 text-blue-400">Asset Allocation</h3>
-                          <AllocationChart allocations={analysis.allocations} />
+                          <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-semibold text-blue-400">Performance Comparison</h3>
+                            <div className="flex items-center space-x-4 text-xs">
+                              <div className="flex items-center">
+                                <div className="w-3 h-3 rounded-full bg-purple-500 mr-1"></div>
+                                <span>Your Portfolio</span>
+                              </div>
+                              <div className="flex items-center">
+                                <div className="w-3 h-3 rounded-full bg-blue-500 mr-1"></div>
+                                <span>S&P 500 Index</span>
+                              </div>
+                            </div>
+                          </div>
+                          {chartData && <PerformanceChart data={chartData} />}
+                          <div className="mt-3 text-sm text-slate-400">
+                            <p>This chart compares the performance of your optimized portfolio against the S&P 500 index benchmark.</p>
+                          </div>
                         </div>
                         
-                        {/* Performance Chart */}
+                        {/* Allocation Chart - Add explanation about optimization */}
                         <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30">
-                          <h3 className="text-xl font-semibold mb-4 text-blue-400">Performance History</h3>
-                          {chartData && <PerformanceChart data={chartData} />}
+                          <h3 className="text-xl font-semibold mb-3 text-blue-400">Optimized Asset Allocation</h3>
+                          <AllocationChart allocations={analysis.allocations} />
+                          <div className="mt-3 text-sm text-slate-400">
+                            <p>Our algorithm optimizes your allocation based on risk/reward metrics. The weights are adjusted to favor assets with better risk-adjusted returns while maintaining diversification appropriate for your selected risk profile ({portfolio.risk_tolerance}).</p>
+                          </div>
                         </div>
                       </div>
                       
