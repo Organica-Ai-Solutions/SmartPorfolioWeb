@@ -2,7 +2,7 @@ services:
   - type: web
     name: smartportfolio-backend
     env: docker
-    dockerfilePath: ./backend/Dockerfile
+    dockerfilePath: ./Dockerfile
     rootDir: backend
     plan: free
     healthCheckPath: /test
