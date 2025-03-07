@@ -536,14 +536,8 @@ function App() {
                     <div className="mt-8 border-t border-gray-700 pt-6">
                       <h2 className="text-2xl font-bold mb-6">Portfolio Analysis Results</h2>
                       
-                      {/* Debug Info */}
-                      <div className="mb-4 p-4 bg-blue-900/50 rounded-lg">
-                        <p className="font-medium">Analysis data loaded successfully!</p>
-                        <p>Keys: {Object.keys(analysis).join(', ')}</p>
-                      </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                      {/* Allocation Chart */}
+                        {/* Allocation Chart */}
                         <div className="bg-slate-800 p-4 rounded-lg">
                           <h3 className="text-xl font-semibold mb-4">Asset Allocation</h3>
                           <AllocationChart allocations={analysis.allocations} />
@@ -552,66 +546,32 @@ function App() {
                         {/* Performance Chart */}
                         <div className="bg-slate-800 p-4 rounded-lg">
                           <h3 className="text-xl font-semibold mb-4">Performance History</h3>
-                          {chartData ? (
-                            <PerformanceChart data={chartData} />
-                          ) : (
-                            <p>Chart data not available</p>
-                          )}
+                          {chartData && <PerformanceChart data={chartData} />}
                         </div>
                       </div>
                       
-                      {/* Portfolio Metrics */}
+                      {/* Portfolio Metrics - Restore to original */}
                       <div className="bg-slate-800 p-4 rounded-lg mb-6">
-                        <h3 className="text-xl font-semibold mb-4">Portfolio Metrics</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div className="bg-slate-700 p-3 rounded-lg">
-                            <div className="text-slate-400 text-sm">Expected Return</div>
-                            <div className="text-xl font-bold">{(analysis.metrics.expected_return * 100).toFixed(2)}%</div>
-                          </div>
-                          <div className="bg-slate-700 p-3 rounded-lg">
-                            <div className="text-slate-400 text-sm">Volatility</div>
-                            <div className="text-xl font-bold">{(analysis.metrics.volatility * 100).toFixed(2)}%</div>
+                        <h3 className="text-xl font-semibold mb-4">Portfolio Summary</h3>
+                        <PortfolioSummary analysis={analysis} />
                       </div>
-                          <div className="bg-slate-700 p-3 rounded-lg">
-                            <div className="text-slate-400 text-sm">Sharpe Ratio</div>
-                            <div className="text-xl font-bold">{analysis.metrics.sharpe_ratio.toFixed(2)}</div>
-                          </div>
-                          <div className="bg-slate-700 p-3 rounded-lg">
-                            <div className="text-slate-400 text-sm">Max Drawdown</div>
-                            <div className="text-xl font-bold">{(analysis.metrics.max_drawdown * 100).toFixed(2)}%</div>
-                      </div>
-                      </div>
-                    </div>
-
-                    {/* Asset Metrics */}
+                      
+                      {/* Asset Metrics - Restore to original */}
                       <div className="bg-slate-800 p-4 rounded-lg mb-6">
-                        <h3 className="text-xl font-semibold mb-4">Asset Details</h3>
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full divide-y divide-slate-700">
-                            <thead>
-                              <tr>
-                                <th className="px-4 py-2 text-left text-sm font-medium text-slate-400">Asset</th>
-                                <th className="px-4 py-2 text-left text-sm font-medium text-slate-400">Weight</th>
-                                <th className="px-4 py-2 text-left text-sm font-medium text-slate-400">Return</th>
-                                <th className="px-4 py-2 text-left text-sm font-medium text-slate-400">Risk</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-700">
-                      {Object.entries(analysis.asset_metrics).map(([ticker, metrics]) => (
-                                <tr key={ticker}>
-                                  <td className="px-4 py-2 font-medium">{ticker}</td>
-                                  <td className="px-4 py-2">{(metrics.weight * 100).toFixed(2)}%</td>
-                                  <td className="px-4 py-2">{(metrics.annual_return * 100).toFixed(2)}%</td>
-                                  <td className="px-4 py-2">{(metrics.annual_volatility * 100).toFixed(2)}%</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                        <h3 className="text-xl font-semibold mb-4">Asset Metrics</h3>
+                        <AssetMetricsDetail assetMetrics={analysis.asset_metrics} />
+                      </div>
+                      
+                      {/* AI Insights - Restore this section */}
+                      {analysis.ai_insights && (
+                        <div className="bg-slate-800 p-4 rounded-lg mb-6">
+                          <h3 className="text-xl font-semibold mb-4">AI Insights</h3>
+                          <PortfolioExplanation analysis={analysis} />
                         </div>
+                      )}
                     </div>
-                    </div>
-                )}
-              </div>
+                  )}
+                </div>
               )}
               {activeTab === 'watchlist' && <WatchlistTab stockData={stockData} />}
             </motion.div>
