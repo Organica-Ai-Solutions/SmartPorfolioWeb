@@ -74,14 +74,21 @@ class AIAdvisorService:
             # Anonymize data before sending to API
             anonymized_data = self._anonymize_data(portfolio_data)
             
-            # Prepare request with proxy settings
-            async with httpx.AsyncClient(
-                proxies={
+            # Check if proxy is enabled
+            use_proxy = os.getenv("USE_TOR_PROXY", "false").lower() == "true"
+            
+            # Prepare request with proxy settings if enabled
+            client_kwargs = {
+                "timeout": 30.0
+            }
+            
+            if use_proxy:
+                client_kwargs["proxies"] = {
                     "http://": "socks5://localhost:9050",
                     "https://": "socks5://localhost:9050"
-                },
-                timeout=30.0
-            ) as client:
+                }
+            
+            async with httpx.AsyncClient(**client_kwargs) as client:
                 response = await client.post(
                     f"{self.api_url}/portfolio/analyze",
                     headers={
@@ -117,13 +124,21 @@ class AIAdvisorService:
             # Anonymize market data
             anonymized_data = self._anonymize_data(market_data)
             
-            async with httpx.AsyncClient(
-                proxies={
+            # Check if proxy is enabled
+            use_proxy = os.getenv("USE_TOR_PROXY", "false").lower() == "true"
+            
+            # Prepare request with proxy settings if enabled
+            client_kwargs = {
+                "timeout": 30.0
+            }
+            
+            if use_proxy:
+                client_kwargs["proxies"] = {
                     "http://": "socks5://localhost:9050",
                     "https://": "socks5://localhost:9050"
-                },
-                timeout=30.0
-            ) as client:
+                }
+            
+            async with httpx.AsyncClient(**client_kwargs) as client:
                 response = await client.post(
                     f"{self.api_url}/market/regime",
                     headers={
