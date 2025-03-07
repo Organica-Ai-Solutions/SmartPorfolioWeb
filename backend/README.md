@@ -35,26 +35,29 @@ The following environment variables need to be set in the deployment environment
 - `ENCRYPTION_KEY`: Key for encrypting sensitive data
 - `DATABASE_URL`: Connection string for the database (if applicable)
 
-### Google Cloud Run Deployment
+### Render.com Deployment (Recommended)
 
-The backend is configured for deployment on Google Cloud Run using Docker.
+The backend is configured for deployment on Render.com using Docker.
+
+For detailed deployment instructions, see [DEPLOY_RENDER.md](./DEPLOY_RENDER.md).
+
+Quick steps:
+1. Connect your GitHub repository to Render.com
+2. Create a new Web Service using the Blueprint option
+3. Set the required environment variables
+4. Deploy the service
+5. Update the frontend environment variables with the Render.com service URL
+
+### Google Cloud Run Deployment (Alternative)
+
+Alternatively, the backend can be deployed on Google Cloud Run:
 
 For detailed deployment instructions, see [DEPLOY_GCP.md](./DEPLOY_GCP.md).
 
 Quick steps:
-1. Set up a Google Cloud project
+1. Set up a Google Cloud project with billing enabled
 2. Build and deploy the Docker image to Cloud Run
 3. Update the frontend environment variables with the Cloud Run service URL
-
-### Render.com Deployment (Alternative)
-
-Alternatively, the backend can be deployed on Render.com:
-
-1. Push the code to a GitHub repository
-2. Connect the repository to Render.com
-3. Create a new Web Service, selecting "Deploy from Blueprint" and using the `render.yaml` file
-4. Set the required environment variables
-5. Deploy the service
 
 ## API Documentation
 
