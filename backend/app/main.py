@@ -29,9 +29,9 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://organica-ai-solutions.github.io",  # GitHub Pages domain
         "http://localhost:5173",  # Local development
-        "http://127.0.0.1:5173",  # Local development alternative
+        "http://localhost:3000",  # Local development alternative
+        "https://organica-ai-solutions.github.io",  # GitHub Pages domain
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -491,14 +491,14 @@ async def analyze_portfolio(request: Portfolio):
         
         for attempt in range(max_retries):
             try:
-                print("Downloading market data...")
+        print("Downloading market data...")
                 try:
                     data = yf.download(request.tickers, start=start_date, end=end_date)['Adj Close']
                 except KeyError as e:
                     if str(e) == "'Adj Close'":
                         print("Adj Close not available, falling back to Close prices")
                         data = yf.download(request.tickers, start=start_date, end=end_date)['Close']
-                    else:
+        else:
                         raise e
                 
                 # Check if we got any data
@@ -517,7 +517,7 @@ async def analyze_portfolio(request: Portfolio):
                     
                     # Try to download missing tickers individually
                     for ticker in missing_tickers:
-                        print(f"Downloading data for {ticker}...")
+            print(f"Downloading data for {ticker}...")
                         try:
                             # Try Adj Close first, fall back to Close
                             try:
