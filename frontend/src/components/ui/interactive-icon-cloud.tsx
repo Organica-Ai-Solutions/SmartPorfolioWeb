@@ -109,10 +109,21 @@ const fetchSimpleIcons = async (params: { slugs: string[] }) => {
           
           if (response.ok) {
             const svgText = await response.text();
+            
+            // Make sure we're only using the SVG content
+            const cleanedSvg = svgText
+              .replace(/<\?xml.*?\?>/, '') // Remove XML declaration
+              .replace(/<\!DOCTYPE.*?>/, '') // Remove DOCTYPE
+              .trim();
+            
+            // SVG needs to maintain viewBox and other attributes
+            const viewBoxMatch = cleanedSvg.match(/viewBox="([^"]+)"/);
+            const viewBox = viewBoxMatch ? viewBoxMatch[1] : '0 0 24 24';
+            
             simpleIcons[slug] = {
               slug,
               title: slug,
-              svg: svgText,
+              svg: cleanedSvg,
               path: '',
               hex: 'ffffff',
             };
@@ -151,34 +162,25 @@ export const cloudProps: Omit<ICloud, "children"> = {
   },
   options: {
     reverse: true,
-    depth: 0.8,
+    depth: 1.5,
     wheelZoom: false,
-    imageScale: 1.75,
+    imageScale: 2,
     activeCursor: "pointer",
     tooltip: "native",
+    initial: [0.1, -0.1],
     clickToFront: 500,
     tooltipDelay: 0,
     outlineColour: "#0000",
-    maxSpeed: 0.04,
-    minSpeed: 0.02,
-    radiusX: 0.9,
-    radiusY: 0.9,
-    radiusZ: 0.9,
-    stretchX: 1,
-    stretchY: 1,
-    offsetX: 0,
-    offsetY: 0,
-    shuffleTags: true,
-    initial: [0.1, -0.1],
-    fadeIn: 500,
-    zoom: 0.95,
-    dragControl: true,
-    noSelect: false,
-    noMouse: false,
-    pinchZoom: true,
+    textColour: "#fff",
+    textHeight: 0, // Hide text, show only icons
     freezeActive: true,
+    shuffleTags: true,
+    shape: "sphere",
+    noSelect: true,
+    noMouse: false,
     freezeDecel: true,
-    shape: "sphere"
+    fadeIn: 1000,
+    zoom: 1.1
   },
 }
 
@@ -270,30 +272,60 @@ const tickerToSlug: Record<string, string> = {
 };
 
 export const renderCustomIcon = (icon: SimpleIcon, theme: string, onClick?: () => void) => {
-  const bgHex = theme === "light" ? "#f3f2ef" : "#080510"
-  const fallbackHex = theme === "light" ? "#6e6e73" : "#ffffff"
-  const minContrastRatio = theme === "dark" ? 2 : 1.2
+  // Create style for the icon based on theme
+  const iconStyle = {
+    display: "inline-block",
+    width: "100%",
+    height: "100%",
+    color: theme === "dark" ? "#fff" : "#000",
+    fill: "currentColor",
+  };
 
+  // Get icon SVG content if it exists from our custom fetching
+  const customSvg = (icon as CustomSimpleIcon).svg;
+  
+  // If we have the SVG content from our custom fetching, render it directly
+  if (customSvg) {
+    return (
+      <a
+        key={icon.slug}
+        href="#"
+        className="cloud-icon"
+        onClick={(e) => {
+          e.preventDefault();
+          onClick?.();
+        }}
+        title={icon.title}
+        style={{
+          width: "42px",
+          height: "42px",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div
+          style={iconStyle}
+          dangerouslySetInnerHTML={{ __html: customSvg }}
+        />
+      </a>
+    );
+  }
+
+  // Fallback to the original renderSimpleIcon behavior
   return renderSimpleIcon({
     icon,
-    bgHex,
-    fallbackHex,
-    minContrastRatio,
-    size: 36,
+    bgHex: theme === "dark" ? "#000000" : "#ffffff",
+    size: 42,
+    fallbackHex: theme === "dark" ? "#fff" : "#000",
     aProps: {
-      href: undefined,
-      target: undefined,
-      rel: undefined,
-      onClick: (e: any) => {
-        e.preventDefault()
-        onClick?.()
+      onClick: (e) => {
+        e.preventDefault();
+        onClick?.();
       },
-      style: {
-        cursor: onClick ? 'pointer' : 'default',
-      }
     },
-  })
-}
+  });
+};
 
 export type DynamicCloudProps = {
   tickers: string[]
