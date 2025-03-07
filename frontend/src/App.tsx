@@ -550,9 +550,10 @@ function App() {
                         </div>
                       </div>
                       
-                      {/* Portfolio Metrics - Fix the props */}
+                      {/* Portfolio Metrics - Restore to original with correct props */}
                       <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30 mb-6">
                         <h3 className="text-xl font-semibold mb-4 text-blue-400">Portfolio Summary</h3>
+                        {/* Direct metrics display instead of component that expects different props */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                           <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
                             <div className="text-slate-400 text-sm">Expected Return</div>
@@ -573,7 +574,7 @@ function App() {
                         </div>
                       </div>
                       
-                      {/* Asset Metrics - Fix the props */}
+                      {/* Asset Metrics - Keep our custom implementation that works */}
                       <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30 mb-6">
                         <h3 className="text-xl font-semibold mb-4 text-blue-400">Asset Metrics</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -606,7 +607,7 @@ function App() {
                         </div>
                       </div>
                       
-                      {/* AI Insights - With improved styling */}
+                      {/* AI Insights - With improved styling and proper data access */}
                       {analysis.ai_insights && (
                         <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30 mb-6">
                           <h3 className="text-xl font-semibold mb-4 text-blue-400">AI Insights</h3>
@@ -620,14 +621,15 @@ function App() {
                               <div>
                                 <h4 className="text-lg font-semibold text-green-400 mb-2">Portfolio Analysis</h4>
                                 <p className="text-white/90 mb-4">
-                                  {analysis.ai_insights.explanations && 
-                                   typeof analysis.ai_insights.explanations === 'object' ? 
-                                   (analysis.ai_insights.explanations.english?.summary || 
-                                    "Your portfolio has been analyzed successfully.") : 
+                                  {/* Safe access to nested objects */}
+                                  {analysis.ai_insights?.explanations?.english?.summary || 
                                    "Your portfolio has been analyzed successfully."}
                                 </p>
                                 
-                                {analysis.ai_insights.recommendations && analysis.ai_insights.recommendations.length > 0 && (
+                                {/* Recommendations section */}
+                                {analysis.ai_insights.recommendations && 
+                                 Array.isArray(analysis.ai_insights.recommendations) && 
+                                 analysis.ai_insights.recommendations.length > 0 && (
                                   <div className="mt-4">
                                     <h5 className="text-md font-semibold text-yellow-400 mb-2">Recommendations</h5>
                                     <ul className="list-disc list-inside space-y-1 text-white/80">
@@ -638,21 +640,23 @@ function App() {
                                   </div>
                                 )}
                                 
-                                {analysis.ai_insights.market_outlook && (
+                                {/* Market outlook section */}
+                                {analysis.ai_insights.market_outlook && 
+                                 typeof analysis.ai_insights.market_outlook === 'object' && (
                                   <div className="mt-4 p-3 bg-[#121a2a] rounded-lg">
                                     <h5 className="text-md font-semibold text-blue-400 mb-2">Market Outlook</h5>
                                     <div className="grid grid-cols-3 gap-2 text-sm">
                                       <div className="bg-[#0a0a17] p-2 rounded">
                                         <div className="text-slate-400">Short Term</div>
-                                        <div className="font-medium text-blue-400">{analysis.ai_insights.market_outlook.short_term}</div>
+                                        <div className="font-medium text-blue-400">{analysis.ai_insights.market_outlook.short_term || 'Unknown'}</div>
                                       </div>
                                       <div className="bg-[#0a0a17] p-2 rounded">
                                         <div className="text-slate-400">Medium Term</div>
-                                        <div className="font-medium text-blue-400">{analysis.ai_insights.market_outlook.medium_term}</div>
+                                        <div className="font-medium text-blue-400">{analysis.ai_insights.market_outlook.medium_term || 'Unknown'}</div>
                                       </div>
                                       <div className="bg-[#0a0a17] p-2 rounded">
                                         <div className="text-slate-400">Long Term</div>
-                                        <div className="font-medium text-blue-400">{analysis.ai_insights.market_outlook.long_term}</div>
+                                        <div className="font-medium text-blue-400">{analysis.ai_insights.market_outlook.long_term || 'Unknown'}</div>
                                       </div>
                                     </div>
                                   </div>
