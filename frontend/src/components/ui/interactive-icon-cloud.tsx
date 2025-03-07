@@ -4,14 +4,66 @@ import { useEffect, useMemo, useState } from "react"
 import { useTheme } from "next-themes"
 import {
   Cloud,
-  fetchSimpleIcons,
+  fetchSimpleIcons as originalFetchSimpleIcons,
   ICloud,
   renderSimpleIcon,
   SimpleIcon,
 } from "react-icon-cloud"
 
 // Update version in the URL when fetching icons
-const SIMPLE_ICONS_VERSION = "14.0.0" // Match the version being used by the system
+const SIMPLE_ICONS_VERSION = "14.8.0" // Updated to the latest version
+
+// Define our custom SimpleIcon interface (it might be different from the react-icon-cloud one)
+interface CustomSimpleIcon {
+  slug: string;
+  title: string;
+  path: string;
+  hex: string;
+  svg?: string; // Add the svg property
+}
+
+// Create a wrapper for fetchSimpleIcons that uses our version
+const fetchSimpleIcons = async (params: { slugs: string[] }) => {
+  try {
+    // Override the default behavior to use our version
+    // The original function doesn't expose a way to set the version directly
+    // So we need to fetch the icons manually
+    const { slugs } = params;
+    const simpleIcons: Record<string, CustomSimpleIcon> = {};
+    
+    await Promise.all(
+      slugs.map(async (slug) => {
+        try {
+          const response = await fetch(`https://cdn.jsdelivr.net/npm/simple-icons@${SIMPLE_ICONS_VERSION}/icons/${slug}.svg`);
+          if (response.ok) {
+            const svgText = await response.text();
+            simpleIcons[slug] = {
+              slug,
+              title: slug,
+              svg: svgText,
+              path: '',
+              hex: 'ffffff',
+            };
+          } else {
+            console.warn(`Failed to fetch icon for ${slug}: ${response.status}`);
+          }
+        } catch (error) {
+          console.error(`Error fetching icon for ${slug}:`, error);
+        }
+      })
+    );
+    
+    console.debug('Successfully fetched icons with version:', SIMPLE_ICONS_VERSION);
+    
+    return {
+      simpleIcons,
+    };
+  } catch (error) {
+    console.error('Error in custom fetchSimpleIcons:', error);
+    // Fallback to original function if our custom one fails
+    return originalFetchSimpleIcons(params);
+  }
+};
 
 export const cloudProps: Omit<ICloud, "children"> = {
   containerProps: {
