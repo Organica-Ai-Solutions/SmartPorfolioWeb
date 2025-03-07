@@ -499,10 +499,10 @@ async def analyze_portfolio(request: Portfolio):
                         print("Adj Close not available, falling back to Close prices")
                         data = yf.download(request.tickers, start=start_date, end=end_date)['Close']
         else:
-                        raise e
+                    raise e
                 
                 # Check if we got any data
-        if data.empty:
+                if data.empty:
                     raise ValueError("No data returned from Yahoo Finance")
                 
                 # If it's a Series (single ticker), convert to DataFrame

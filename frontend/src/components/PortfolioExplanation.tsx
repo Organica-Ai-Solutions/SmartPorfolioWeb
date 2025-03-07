@@ -208,7 +208,7 @@ export function PortfolioExplanation({ analysis, language = 'en' }: PortfolioExp
                 <div className="flex items-start mb-3">
                   <GlobeAmericasIcon className="h-6 w-6 text-green-400 mr-2 mt-1" />
                   <h3 className="text-xl font-semibold text-white">Market Analysis</h3>
-                </div>
+            </div>
                 <p className="text-gray-300 leading-relaxed">
                   {aiExplanations.market_analysis}
                 </p>
@@ -256,12 +256,12 @@ export function PortfolioExplanation({ analysis, language = 'en' }: PortfolioExp
                   <div className="bg-[#252525] p-4 rounded-lg">
                     <h4 className="font-medium mb-1 text-purple-300">Medium Term</h4>
                     <p className="text-sm text-gray-300">{marketOutlook.medium_term || 'No data available'}</p>
-                  </div>
+            </div>
                   <div className="bg-[#252525] p-4 rounded-lg">
                     <h4 className="font-medium mb-1 text-indigo-300">Long Term</h4>
                     <p className="text-sm text-gray-300">{marketOutlook.long_term || 'No data available'}</p>
-                  </div>
-                </div>
+              </div>
+            </div>
               </motion.div>
             )}
           </div>
