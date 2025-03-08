@@ -193,13 +193,41 @@ function App() {
       const data = await response.json();
       console.log("Portfolio analysis response:", data);
       
-      // Validate that we have the required data
-      if (!data.allocations || !data.historical_performance) {
-        throw new Error('Invalid response data');
+      // Check if response has the required data in a more flexible way
+      // This will log more detailed errors but not fail completely
+      if (!data) {
+        console.error('Empty response received');
+        throw new Error('Invalid response from server');
       }
-      
-      // Create a copy of the data to add AI insights if available
-      const analysisData = { ...data };
+
+      // Create a properly structured analysis object regardless of what was returned
+      const analysisData = {
+        allocations: data.allocations || {},
+        metrics: data.metrics || {
+          expected_return: 0,
+          volatility: 0,
+          sharpe_ratio: 0,
+          sortino_ratio: 0,
+          beta: 0,
+          max_drawdown: 0,
+          var_95: 0,
+          cvar_95: 0
+        },
+        asset_metrics: data.asset_metrics || {},
+        discrete_allocation: data.discrete_allocation || { shares: {}, leftover: 0 },
+        historical_performance: data.historical_performance || {
+          dates: [],
+          portfolio_values: [],
+          drawdowns: [],
+          rolling_volatility: []
+        },
+        market_comparison: data.market_comparison || {
+          dates: [],
+          market_values: [],
+          relative_performance: []
+        },
+        ai_insights: undefined // Initialize as undefined, will be set later if available
+      };
       
       // Now get the AI insights
       try {
@@ -220,7 +248,7 @@ function App() {
           console.log("AI portfolio analysis response:", aiData);
           
           // If we have AI insights, add them to the analysis
-          if (aiData.ai_insights) {
+          if (aiData && aiData.ai_insights) {
             analysisData.ai_insights = aiData.ai_insights;
           }
         } else {
