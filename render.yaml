@@ -1,11 +1,12 @@
 services:
+  # Backend service
   - type: web
     name: smartportfolio-backend
     env: docker
     dockerfilePath: ./Dockerfile
     rootDir: backend
     plan: free
-    healthCheckPath: /test
+    healthCheckPath: /health
     envVars:
       - key: DEEPSEEK_API_KEY
         sync: false
@@ -16,4 +17,29 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: USE_TOR_PROXY
-        value: "false" 
+        value: "false"
+      - key: CORS_ORIGINS
+        value: "https://smartportfolio-frontend.onrender.com"
+      - key: PORT
+        value: "8080"
+
+  # Frontend service
+  - type: web
+    name: smartportfolio-frontend
+    env: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    buildFilter:
+      paths:
+        - frontend/**
+    envVars:
+      - key: VITE_API_URL
+        value: "https://smartportfolio-backend.onrender.com"
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html 

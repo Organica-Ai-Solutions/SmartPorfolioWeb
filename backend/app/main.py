@@ -1142,6 +1142,11 @@ async def ai_rebalance_explanation(allocation: PortfolioAllocation):
         print(f"Error in AI rebalance explanation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error in AI rebalance explanation: {str(e)}")
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring purposes."""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000) 
