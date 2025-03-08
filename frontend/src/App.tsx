@@ -186,21 +186,18 @@ function App() {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.detail || 'Failed to analyze portfolio');
       }
       
-      const data = await response.json();
+      const data = await response.json().catch(() => {
+        console.error('Failed to parse response JSON');
+        throw new Error('Invalid response format from server');
+      });
+      
       console.log("Portfolio analysis response:", data);
       
-      // Check if response has the required data in a more flexible way
-      // This will log more detailed errors but not fail completely
-      if (!data) {
-        console.error('Empty response received');
-        throw new Error('Invalid response from server');
-      }
-
-      // Create a properly structured analysis object regardless of what was returned
+      // Create complete analysis data structure with fallbacks for missing fields
       const analysisData = {
         allocations: data.allocations || {},
         metrics: data.metrics || {
@@ -226,7 +223,7 @@ function App() {
           market_values: [],
           relative_performance: []
         },
-        ai_insights: undefined // Initialize as undefined, will be set later if available
+        ai_insights: data.ai_insights // Will be overwritten later if AI response succeeds
       };
       
       // Now get the AI insights
@@ -244,7 +241,7 @@ function App() {
         });
         
         if (aiResponse.ok) {
-          const aiData = await aiResponse.json();
+          const aiData = await aiResponse.json().catch(() => ({}));
           console.log("AI portfolio analysis response:", aiData);
           
           // If we have AI insights, add them to the analysis
@@ -274,7 +271,7 @@ function App() {
         });
         
         if (sentimentResponse.ok) {
-          const sentimentData = await sentimentResponse.json();
+          const sentimentData = await sentimentResponse.json().catch(() => ({}));
           console.log("Sentiment analysis response:", sentimentData);
           setSentimentData(sentimentData);
         }
@@ -284,6 +281,9 @@ function App() {
       }
       
       setAnalysis(analysisData);
+      
+      // Set active tab to insights to show analysis results
+      setActiveTab('insights');
       
       // Prepare chart data
       const chartData = prepareChartData(analysisData);
