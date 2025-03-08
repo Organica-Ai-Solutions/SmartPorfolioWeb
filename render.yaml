@@ -1,9 +1,9 @@
 services:
-  # Backend service
+  # Backend service only
   - type: web
     name: smartportfolio-backend
     env: docker
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./backend/Dockerfile
     rootDir: backend
     plan: free
     healthCheckPath: /health
@@ -19,7 +19,7 @@ services:
       - key: USE_TOR_PROXY
         value: "false"
       - key: CORS_ORIGINS
-        value: "https://smartportfolio-frontend.onrender.com"
+        value: "https://organica-ai-solutions.github.io"
       - key: PORT
         value: "8080"
 
