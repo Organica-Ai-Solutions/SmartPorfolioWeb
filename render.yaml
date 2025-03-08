@@ -1,1 +1,24 @@
- 
+services:
+  # Backend service only
+  - type: web
+    name: smartportfolio-backend
+    env: docker
+    dockerfilePath: backend/Dockerfile
+    rootDir: backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_URL
+        value: https://api.deepseek.com/v1
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: USE_TOR_PROXY
+        value: "false"
+      - key: CORS_ORIGINS
+        value: "https://organica-ai-solutions.github.io"
+      - key: PORT
+        value: "8080" 
