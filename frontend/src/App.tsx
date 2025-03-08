@@ -119,6 +119,18 @@ function App() {
   const [sentimentData, setSentimentData] = useState<any>(null);
   const [useFailsafe, setUseFailsafe] = useState(false);
 
+  // Check for global failsafe flag
+  const [globalFailsafe] = useState(() => {
+    return sessionStorage.getItem('USE_GLOBAL_FAILSAFE') === 'true';
+  });
+  
+  // If globalFailsafe is true, log it
+  useEffect(() => {
+    if (globalFailsafe) {
+      console.log('🛡️ Global failsafe mode activated');
+    }
+  }, [globalFailsafe]);
+
   console.log("Portfolio state initialized:", portfolio);
 
   const addTicker = (ticker: string) => {
@@ -172,6 +184,13 @@ function App() {
       setIsAnalyzing(true);
       setError('');
       setUseFailsafe(false);
+      
+      // If global failsafe is activated, skip API calls and use failsafe directly
+      if (globalFailsafe) {
+        console.log('🔄 Using global failsafe for portfolio analysis');
+        setUseFailsafe(true);
+        return;
+      }
       
       console.log("Analyzing portfolio with tickers:", portfolio.tickers);
       
