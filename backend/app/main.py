@@ -25,18 +25,24 @@ load_dotenv()
 
 app = FastAPI()
 
-# Configure CORS
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",  # Local development
         "http://localhost:3000",  # Local development alternative
         "https://organica-ai-solutions.github.io",  # GitHub Pages domain
+        "https://smartportfolio-frontend.onrender.com",  # Render.com deployment
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring purposes."""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 class Portfolio(BaseModel):
     id: Optional[int] = None
@@ -491,15 +497,15 @@ async def analyze_portfolio(request: Portfolio):
         
         for attempt in range(max_retries):
             try:
-        print("Downloading market data...")
+                print("Downloading market data...")
                 try:
                     data = yf.download(request.tickers, start=start_date, end=end_date)['Adj Close']
                 except KeyError as e:
                     if str(e) == "'Adj Close'":
                         print("Adj Close not available, falling back to Close prices")
                         data = yf.download(request.tickers, start=start_date, end=end_date)['Close']
-        else:
-                    raise e
+                    else:
+                        raise e
                 
                 # Check if we got any data
                 if data.empty:
@@ -517,14 +523,14 @@ async def analyze_portfolio(request: Portfolio):
                     
                     # Try to download missing tickers individually
                     for ticker in missing_tickers:
-            print(f"Downloading data for {ticker}...")
+                        print(f"Downloading data for {ticker}...")
                         try:
                             # Try Adj Close first, fall back to Close
                             try:
                                 ticker_data = yf.download(ticker, start=start_date, end=end_date)['Adj Close']
                             except KeyError:
                                 ticker_data = yf.download(ticker, start=start_date, end=end_date)['Close']
-                                
+                            
                             if not ticker_data.empty:
                                 data[ticker] = ticker_data
                         except Exception as e:
@@ -543,7 +549,7 @@ async def analyze_portfolio(request: Portfolio):
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
-                    raise ValueError("Failed to download data after multiple attempts")
+                    raise ValueError(f"Failed to download data after {max_retries} attempts")
                     
             except Exception as e:
                 if attempt < max_retries - 1:
@@ -551,7 +557,7 @@ async def analyze_portfolio(request: Portfolio):
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
-                    raise ValueError(f"Failed to download data after {max_retries} attempts: {str(e)}")
+                    raise e
         
         # Check if we have any data to work with
         if data.empty or len(data.columns) == 0:
@@ -784,9 +790,9 @@ async def rebalance_portfolio(allocation: PortfolioAllocation):
             trading_client = TradingClient(api_key, secret_key, paper=use_paper)
 
             # Test the connection by getting account info
-        account = trading_client.get_account()
-        equity = float(account.equity)
-        print(f"Account equity: ${equity}")
+            account = trading_client.get_account()
+            equity = float(account.equity)
+            print(f"Account equity: ${equity}")
         except Exception as e:
             raise HTTPException(
                 status_code=401,
@@ -901,15 +907,33 @@ async def rebalance_portfolio_simple(allocation: PortfolioAllocation):
 
         print(f"Received allocations: {formatted_allocations}")
         print(f"Total allocation: {total_allocation}")
-        
+
         # Check if API keys are provided
-        if not allocation.alpaca_api_key or not allocation.alpaca_secret_key:
+        api_key = allocation.alpaca_api_key
+        secret_key = allocation.alpaca_secret_key
+        use_paper = allocation.use_paper_trading if allocation.use_paper_trading is not None else True
+        
+        if not api_key or not secret_key:
+            return {
+                "message": "API keys not provided. Here are your target allocations:",
+                "allocations": allocation.allocations
+            }
+        
+        # Initialize Alpaca client
+        try:
+            trading_client = TradingClient(api_key, secret_key, paper=use_paper)
+            
+            # Test the connection by getting account info
+            account = trading_client.get_account()
+            equity = float(account.equity)
+            print(f"Account equity: ${equity}")
+        except Exception as e:
             raise HTTPException(
-                status_code=400,
-                detail="Alpaca API keys are required. Please provide them in the request."
+                status_code=401,
+                detail=f"Failed to connect to Alpaca API: {str(e)}"
             )
         
-        # Return mock response
+        # Return mock response for now
         return {
             "message": "Portfolio rebalancing completed (simulated)",
             "orders": [
@@ -927,6 +951,7 @@ async def rebalance_portfolio_simple(allocation: PortfolioAllocation):
                 "buying_power": 4000.0
             }
         }
+
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -1141,11 +1166,6 @@ async def ai_rebalance_explanation(allocation: PortfolioAllocation):
     except Exception as e:
         print(f"Error in AI rebalance explanation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error in AI rebalance explanation: {str(e)}")
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for monitoring purposes."""
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 if __name__ == "__main__":
     import uvicorn
