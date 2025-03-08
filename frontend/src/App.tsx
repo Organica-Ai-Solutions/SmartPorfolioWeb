@@ -113,6 +113,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [rebalanceResult, setRebalanceResult] = useState<RebalanceResult | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [sentimentData, setSentimentData] = useState<any>(null);
 
   console.log("Portfolio state initialized:", portfolio);
 
@@ -133,6 +134,35 @@ function App() {
     })
   }
 
+  const getSentimentAnalysis = async () => {
+    if (!portfolio.tickers.length) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/ai-sentiment-analysis`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tickers: portfolio.tickers,
+          start_date: portfolio.start_date,
+          risk_tolerance: portfolio.risk_tolerance,
+        }),
+      });
+      
+      if (!response.ok) {
+        console.warn("Sentiment analysis not available");
+        return;
+      }
+      
+      const data = await response.json();
+      console.log("Sentiment analysis response:", data);
+      setSentimentData(data);
+    } catch (err) {
+      console.warn("Error getting sentiment analysis:", err);
+    }
+  };
+
   const analyzePortfolio = async () => {
     try {
       setIsAnalyzing(true);
@@ -140,14 +170,15 @@ function App() {
       
       console.log("Analyzing portfolio with tickers:", portfolio.tickers);
       
-      const response = await fetch(`${API_URL}/ai-portfolio-analysis`, {
+      // First get the regular portfolio analysis
+      const response = await fetch(`${API_URL}/analyze-portfolio-simple`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-        tickers: portfolio.tickers,
-        start_date: portfolio.start_date,
+          tickers: portfolio.tickers,
+          start_date: portfolio.start_date,
           risk_tolerance: portfolio.risk_tolerance,
         }),
       });
@@ -165,11 +196,44 @@ function App() {
         throw new Error('Invalid response data');
       }
       
+      // Now get the AI insights
+      try {
+        const aiResponse = await fetch(`${API_URL}/ai-portfolio-analysis`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tickers: portfolio.tickers,
+            start_date: portfolio.start_date,
+            risk_tolerance: portfolio.risk_tolerance,
+          }),
+        });
+        
+        if (aiResponse.ok) {
+          const aiData = await aiResponse.json();
+          console.log("AI portfolio analysis response:", aiData);
+          
+          // If we have AI insights, add them to the analysis
+          if (aiData.ai_insights) {
+            data.ai_insights = aiData.ai_insights;
+          }
+        } else {
+          console.warn("AI insights not available, proceeding with basic analysis");
+        }
+      } catch (aiErr) {
+        console.warn("Error getting AI insights:", aiErr);
+        // Continue with basic analysis even if AI fails
+      }
+      
       setAnalysis(data);
       
       // Prepare chart data
       const chartData = prepareChartData(data);
       setChartData(chartData);
+      
+      // Get sentiment analysis
+      getSentimentAnalysis();
       
     } catch (err: any) {
       console.error('Error analyzing portfolio:', err);
@@ -678,7 +742,7 @@ function App() {
                                     </span>
                                   </td>
                                   <td className="py-4 text-sm">
-                                    <span className={(metrics.alpha || 0) > 0 ? 'text-green-400' : 'text-red-400'}>
+                                    <span className={(metrics.alpha !== undefined && metrics.alpha > 0) ? 'text-green-400' : 'text-red-400'}>
                                       {((metrics.alpha || 0) * 100).toFixed(2)}%
                                     </span>
                                   </td>
@@ -1075,7 +1139,7 @@ function App() {
                                                      
                                     // Generate an insight based on metrics
                                     let insight = '';
-                                    if (metrics.alpha > 0.03) insight = 'Outperforming market with positive alpha';
+                                    if (metrics.alpha && metrics.alpha > 0.03) insight = 'Outperforming market with positive alpha';
                                     else if (metrics.annual_return > 0.15) insight = 'Strong growth potential';
                                     else if (metrics.annual_volatility < 0.15) insight = 'Low volatility, stable returns';
                                     else if (metrics.beta < 0.8) insight = 'Defensive positioning in current market';
