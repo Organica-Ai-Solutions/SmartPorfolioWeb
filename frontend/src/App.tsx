@@ -23,7 +23,6 @@ import { HeaderComponent } from './components/HeaderComponent'
 import { HeroComponent } from './components/HeroComponent'
 import { SentimentAnalysis } from './components/SentimentAnalysis'
 import { ChartBarIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
-import { FailsafeAnalysis } from './components/FailsafeAnalysis'
 
 ChartJS.register(
   ArcElement,
@@ -117,19 +116,6 @@ function App() {
   const [rebalanceResult, setRebalanceResult] = useState<RebalanceResult | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [sentimentData, setSentimentData] = useState<any>(null);
-  const [useFailsafe, setUseFailsafe] = useState(false);
-
-  // Check for global failsafe flag
-  const [globalFailsafe] = useState(() => {
-    return sessionStorage.getItem('USE_GLOBAL_FAILSAFE') === 'true';
-  });
-  
-  // If globalFailsafe is true, log it
-  useEffect(() => {
-    if (globalFailsafe) {
-      console.log('🛡️ Global failsafe mode activated');
-    }
-  }, [globalFailsafe]);
 
   console.log("Portfolio state initialized:", portfolio);
 
@@ -183,19 +169,11 @@ function App() {
     try {
       setIsAnalyzing(true);
       setError('');
-      setUseFailsafe(false);
-      
-      // If global failsafe is activated, skip API calls and use failsafe directly
-      if (globalFailsafe) {
-        console.log('🔄 Using global failsafe for portfolio analysis');
-        setUseFailsafe(true);
-        return;
-      }
       
       console.log("Analyzing portfolio with tickers:", portfolio.tickers);
       
       try {
-        // First get the regular portfolio analysis
+        // Make the API request
         const response = await fetch(`${API_URL}/analyze-portfolio-simple`, {
           method: 'POST',
           headers: {
@@ -209,63 +187,145 @@ function App() {
         });
         
         if (!response.ok) {
-          console.error("API response not OK:", response.status);
-          throw new Error("API response not successful");
+          const errorText = await response.text();
+          console.error('API error response:', errorText);
+          throw new Error(`API error: ${response.status} ${response.statusText}`);
         }
         
-        const data = await response.json();
-        console.log("Portfolio analysis response:", data);
+        // Parse the response only once
+        const rawData = await response.text();
+        console.log('Raw API response:', rawData);
         
-        // Validate structure
-        if (!data || !data.allocations || !data.historical_performance) {
-          console.error("Invalid response structure:", data);
-          throw new Error("Invalid response structure");
+        // Now parse the response as JSON
+        let data;
+        try {
+          data = JSON.parse(rawData);
+          console.log("Parsed Portfolio analysis:", data);
+        } catch (parseError) {
+          console.error("JSON parse error:", parseError);
+          throw new Error("Failed to parse API response as JSON");
         }
         
-        // Success path - regular API worked
-        setAnalysis(data);
+        // Validation - very specific to match exactly what the backend returns
+        if (!data) {
+          throw new Error("Empty response from server");
+        }
+        
+        // Copy the data and make necessary adjustments to match our interface
+        const convertedData: PortfolioAnalysis = {...data};
+        
+        // Handle discrete_allocation which comes as {shares: {...}, leftover: ...}
+        if (data.discrete_allocation && data.discrete_allocation.shares) {
+          convertedData.discrete_allocation = data.discrete_allocation.shares;
+        }
+        
+        // Handle historical_performance format differences
+        if (data.historical_performance) {
+          const hp = data.historical_performance;
+          
+          // Convert array values to Record<string, number> if needed
+          if (Array.isArray(hp.portfolio_values)) {
+            const portfolioValues: Record<string, number> = {};
+            hp.dates.forEach((date: string, index: number) => {
+              portfolioValues[date] = hp.portfolio_values[index];
+            });
+            convertedData.historical_performance.portfolio_values = portfolioValues;
+          }
+          
+          if (Array.isArray(hp.drawdowns)) {
+            const drawdowns: Record<string, number> = {};
+            hp.dates.forEach((date: string, index: number) => {
+              drawdowns[date] = hp.drawdowns[index];
+            });
+            convertedData.historical_performance.drawdowns = drawdowns;
+          }
+        }
+        
+        // Set the analysis with the converted data
+        setAnalysis(convertedData);
+        
+        // Also try to get AI insights
+        fetchAIInsights(convertedData);
+        
+        // Set active tab to insights
         setActiveTab('insights');
-        const chartData = prepareChartData(data);
+        
+        // Prepare chart data
+        const chartData = prepareChartData(convertedData);
         setChartData(chartData);
         
-        // Try to get additional AI data
-        try {
-          const aiResponse = await fetch(`${API_URL}/ai-portfolio-analysis`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              tickers: portfolio.tickers,
-              start_date: portfolio.start_date,
-              risk_tolerance: portfolio.risk_tolerance,
-            }),
-          });
-          
-          if (aiResponse.ok) {
-            const aiData = await aiResponse.json();
-            // Update with AI data if available
-            if (aiData && aiData.ai_insights) {
-              const updatedAnalysis = { ...data, ai_insights: aiData.ai_insights };
-              setAnalysis(updatedAnalysis);
-            }
-          }
-        } catch (aiErr) {
-          console.warn("Error getting AI insights:", aiErr);
-        }
-        
-      } catch (apiError) {
+      } catch (error: unknown) {
+        const apiError = error as Error;
         console.error("API error:", apiError);
-        // If the API fails, trigger failsafe mode
-        setUseFailsafe(true);
+        setError(apiError.message || "Failed to analyze portfolio");
       }
-      
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as Error;
       console.error('Error analyzing portfolio:', err);
       setError(err.message || 'Failed to analyze portfolio');
-      setUseFailsafe(true); // Use failsafe as last resort
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  // Helper function to fetch AI insights
+  const fetchAIInsights = async (baseAnalysis: PortfolioAnalysis) => {
+    try {
+      const aiResponse = await fetch(`${API_URL}/ai-portfolio-analysis`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tickers: portfolio.tickers,
+          start_date: portfolio.start_date,
+          risk_tolerance: portfolio.risk_tolerance,
+        }),
+      });
+      
+      if (aiResponse.ok) {
+        const aiData = await aiResponse.json();
+        console.log("AI portfolio analysis response:", aiData);
+        
+        // If we have AI insights, add them to the analysis
+        if (aiData && aiData.ai_insights) {
+          const updatedAnalysis = { ...baseAnalysis, ai_insights: aiData.ai_insights };
+          setAnalysis(updatedAnalysis);
+        }
+      } else {
+        console.warn("AI insights not available, continuing with basic analysis");
+      }
+      
+      // Also try to get sentiment data
+      fetchSentimentData();
+      
+    } catch (aiErr) {
+      console.warn("Error getting AI insights:", aiErr);
+    }
+  };
+  
+  // Helper function to fetch sentiment data
+  const fetchSentimentData = async () => {
+    try {
+      const sentimentResponse = await fetch(`${API_URL}/ai-sentiment-analysis`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tickers: portfolio.tickers,
+          start_date: portfolio.start_date,
+          risk_tolerance: portfolio.risk_tolerance,
+        }),
+      });
+      
+      if (sentimentResponse.ok) {
+        const sentimentData = await sentimentResponse.json();
+        console.log("Sentiment analysis response:", sentimentData);
+        setSentimentData(sentimentData);
+      }
+    } catch (sentimentErr) {
+      console.warn("Error getting sentiment analysis:", sentimentErr);
     }
   };
 
@@ -628,25 +688,6 @@ function App() {
                   {error && (
                     <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
                       {error}
-                    </div>
-                  )}
-
-                  {/* Failsafe Analysis Component */}
-                  {useFailsafe && (
-                    <div className="mb-4">
-                      <FailsafeAnalysis
-                        portfolio={portfolio}
-                        onSuccess={(data) => {
-                          setAnalysis(data);
-                          setActiveTab('insights');
-                          const chartData = prepareChartData(data);
-                          setChartData(chartData);
-                          setError('');
-                        }}
-                        onError={(message) => {
-                          setError(message);
-                        }}
-                      />
                     </div>
                   )}
                 </div>

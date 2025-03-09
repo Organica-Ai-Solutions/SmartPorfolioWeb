@@ -1,0 +1,9 @@
+{
+  "allocations": {
+    "AAPL": 0.4,
+    "MSFT": 0.3,
+    "GOOGL": 0.15,
+    "AMZN": 0.1,
+    "TSLA": 0.05
+  }
+} 
