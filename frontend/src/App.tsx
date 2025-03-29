@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Portfolio, PortfolioAnalysis } from './types/portfolio'
+import { Portfolio, PortfolioAnalysis, PortfolioMetrics } from './types/portfolio'
 import axios from 'axios'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip as ChartTooltip, Legend, ArcElement, Filler } from 'chart.js'
 import { Line, Pie } from 'react-chartjs-2'
@@ -235,121 +235,85 @@ function App() {
         body: JSON.stringify({
           tickers: portfolio.tickers,
           start_date: portfolio.start_date,
-          risk_tolerance: portfolio.risk_tolerance,
-        }),
+          risk_tolerance: portfolio.risk_tolerance
+        })
       });
-      
+
       if (!response.ok) {
-        console.warn(`API returned ${response.status}: ${response.statusText}`);
-        // Continue with default data if the API fails
-      } else {
+        const errorText = await response.text();
+        console.error('API Error Response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      }
+
+      const text = await response.text();
+      console.log('Raw API Response:', text);
+      
+      try {
+        // Parse the JSON response
+        const data = JSON.parse(text);
+        console.log("Parsed API Response:", data);
+        
+        // Variable we can modify (not a constant)
+        let analysisData = {...initialDefaultData};
+        
         try {
-          const text = await response.text();
-          
-          try {
-            // Parse the JSON response
-            const data = JSON.parse(text);
-            console.log("Portfolio analysis response:", data);
-            
-            // Variable we can modify (not a constant)
-            let analysisData = {...initialDefaultData};
-            
-            try {
-              if (data) {
-                // Validate the response data
-                if (!validatePortfolioData(data)) {
-                  throw new Error('Invalid portfolio data received from server');
-                }
-                
-                // Merge API data with default data to ensure all fields exist
-                analysisData = mergeWithDefaults(data, initialDefaultData);
-              }
-              setAnalysis(analysisData);
-              setError('');
-            } catch (error) {
-              console.error("Error processing response:", error);
-              setError("Invalid response data");
-              // Still use default data so UI doesn't break
-              setAnalysis(analysisData);
-            } finally {
-              setIsAnalyzing(false);
+          if (data) {
+            // Log the data structure before validation
+            console.log('Data structure before validation:', {
+              hasAllocations: !!data.allocations,
+              hasMetrics: !!data.metrics,
+              hasHistoricalPerformance: !!data.historical_performance,
+              hasMarketComparison: !!data.market_comparison
+            });
+
+            // Validate the response data
+            if (!validatePortfolioData(data)) {
+              console.error('Invalid portfolio data structure:', data);
+              throw new Error('Invalid portfolio data received from server');
             }
             
-            // ... rest of the function, replace defaultData with analysisData
-            console.log("Final processed data:", analysisData);
+            // Merge API data with default data to ensure all fields exist
+            analysisData = mergeWithDefaults(data, initialDefaultData);
             
-            // Try to get AI insights if we don't already have them
-            if (!analysisData.ai_insights || !analysisData.ai_insights.explanations) {
-              try {
-                const aiResponse = await fetch(`${API_URL}/ai-portfolio-analysis`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    tickers: portfolio.tickers,
-                    start_date: portfolio.start_date,
-                    risk_tolerance: portfolio.risk_tolerance,
-                  }),
-                });
-                
-                if (aiResponse.ok) {
-                  const aiData = await aiResponse.json();
-                  console.log("AI portfolio analysis response:", aiData);
-                  
-                  if (aiData && aiData.ai_insights) {
-                    const updatedData = { ...analysisData, ai_insights: aiData.ai_insights };
-                    setAnalysis(updatedData);
-                  }
-                }
-              } catch (aiError) {
-                console.warn("Error getting AI insights:", aiError);
-                // Continue without AI insights if there's an error
-              }
+            // Log the merged data structure
+            console.log('Merged data structure:', {
+              hasAllocations: !!analysisData.allocations,
+              hasMetrics: !!analysisData.metrics,
+              hasHistoricalPerformance: !!analysisData.historical_performance,
+              hasMarketComparison: !!analysisData.market_comparison
+            });
+
+            // Validate the merged data
+            if (!validatePortfolioData(analysisData)) {
+              console.error('Invalid merged data structure:', analysisData);
+              throw new Error('Invalid portfolio data after processing');
             }
             
-            // Try to get sentiment data
-            try {
-              const sentimentResponse = await fetch(`${API_URL}/ai-sentiment-analysis`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  tickers: portfolio.tickers,
-                  start_date: portfolio.start_date,
-                  risk_tolerance: portfolio.risk_tolerance,
-                }),
-              });
-              
-              if (sentimentResponse.ok) {
-                const sentimentData = await sentimentResponse.json();
-                console.log("Sentiment analysis response:", sentimentData);
-                setSentimentData(sentimentData);
-              }
-            } catch (sentimentError) {
-              console.warn("Error getting sentiment analysis:", sentimentError);
-              // Continue without sentiment data if there's an error
-            }
-            
-            // Set active tab to insights and prepare chart data
-            setActiveTab('insights');
-            const chartData = prepareChartData(analysisData);
-            setChartData(chartData);
-            
-          } catch (parseError) {
-            console.error("Error parsing API response:", parseError);
-            // Continue with default data if parsing fails
+            setAnalysis(analysisData);
+            setError('');
           }
-        } catch (parseError) {
-          console.error("Error parsing API response:", parseError);
-          // Continue with default data if parsing fails
+        } catch (error) {
+          console.error("Error processing response:", error);
+          setError(error instanceof Error ? error.message : "Failed to process portfolio data");
+          // Still use default data so UI doesn't break
+          setAnalysis(initialDefaultData);
+        } finally {
+          setIsAnalyzing(false);
         }
+      } catch (parseError) {
+        console.error("Error parsing API response:", parseError);
+        console.error("Raw response text:", text);
+        setError("Invalid response format from server");
+        setAnalysis(initialDefaultData);
+        setIsAnalyzing(false);
       }
     } catch (error) {
       console.error("Error in portfolio analysis:", error);
       setError(error instanceof Error ? error.message : "Failed to analyze portfolio. Please try again.");
-    } finally {
       setIsAnalyzing(false);
     }
   };
@@ -786,40 +750,73 @@ function App() {
     return result;
   }
 
-  // Add a new function to validate portfolio data
+  // Update the validatePortfolioData function to be more specific
   const validatePortfolioData = (data: PortfolioAnalysis): boolean => {
-    if (!data) return false;
+    if (!data) {
+      console.error('Data is null or undefined');
+      return false;
+    }
     
     // Check allocations
-    if (!data.allocations || Object.keys(data.allocations).length === 0) {
-      console.error('Missing or empty allocations');
+    if (!data.allocations || typeof data.allocations !== 'object') {
+      console.error('Invalid allocations:', data.allocations);
       return false;
     }
     
     // Check metrics
-    if (!data.metrics || !data.metrics.expected_return || !data.metrics.volatility) {
-      console.error('Missing or invalid metrics');
+    if (!data.metrics || typeof data.metrics !== 'object') {
+      console.error('Invalid metrics:', data.metrics);
+      return false;
+    }
+    
+    // Check required metrics with type safety
+    const metrics = data.metrics as PortfolioMetrics;
+    if (typeof metrics.expected_return !== 'number' ||
+        typeof metrics.volatility !== 'number' ||
+        typeof metrics.sharpe_ratio !== 'number' ||
+        typeof metrics.sortino_ratio !== 'number' ||
+        typeof metrics.beta !== 'number' ||
+        typeof metrics.max_drawdown !== 'number' ||
+        typeof metrics.var_95 !== 'number' ||
+        typeof metrics.cvar_95 !== 'number') {
+      console.error('Missing or invalid metrics:', metrics);
       return false;
     }
     
     // Check historical performance
-    if (!data.historical_performance || 
-        !data.historical_performance.dates || 
-        !data.historical_performance.portfolio_values) {
-      console.error('Missing or invalid historical performance data');
+    if (!data.historical_performance || typeof data.historical_performance !== 'object') {
+      console.error('Invalid historical performance:', data.historical_performance);
+      return false;
+    }
+    
+    if (!Array.isArray(data.historical_performance.dates)) {
+      console.error('Invalid historical performance dates:', data.historical_performance.dates);
+      return false;
+    }
+    
+    if (!data.historical_performance.portfolio_values || typeof data.historical_performance.portfolio_values !== 'object') {
+      console.error('Invalid portfolio values:', data.historical_performance.portfolio_values);
       return false;
     }
     
     // Check market comparison
-    if (!data.market_comparison || 
-        !data.market_comparison.dates || 
-        !data.market_comparison.market_values) {
-      console.error('Missing or invalid market comparison data');
+    if (!data.market_comparison || typeof data.market_comparison !== 'object') {
+      console.error('Invalid market comparison:', data.market_comparison);
+      return false;
+    }
+    
+    if (!Array.isArray(data.market_comparison.dates)) {
+      console.error('Invalid market comparison dates:', data.market_comparison.dates);
+      return false;
+    }
+    
+    if (!Array.isArray(data.market_comparison.market_values)) {
+      console.error('Invalid market values:', data.market_comparison.market_values);
       return false;
     }
     
     return true;
-  }
+  };
 
   return (
     <TooltipProvider>
