@@ -18,18 +18,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Set up Node
+      - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         working-directory: ./frontend
         run: npm ci
 
@@ -39,14 +39,9 @@ jobs:
         env:
           VITE_API_URL: 'https://smartportfolio-api.onrender.com'
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v3
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
-        with:
-          path: './frontend/dist'
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v2 
+      - name: Deploy
+        working-directory: ./frontend
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          npm run deploy -- -u "github-actions-bot <support+actions@github.com>" 
