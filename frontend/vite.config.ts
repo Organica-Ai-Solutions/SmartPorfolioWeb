@@ -8,8 +8,6 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
-    minify: 'esbuild',
-    chunkSizeWarningLimit: 1600,
   },
   server: {
     port: 3000,
