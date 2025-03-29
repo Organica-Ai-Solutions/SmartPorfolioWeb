@@ -175,57 +175,57 @@ function App() {
     setError('');
     console.log("Analyzing portfolio with tickers:", portfolio.tickers);
     
-    // Create a default data structure with guaranteed values for all required fields
-    const initialDefaultData: PortfolioAnalysis = {
-      allocations: {},
-      metrics: {
-        expected_return: 0.05, 
-        volatility: 0.1,
-        sharpe_ratio: 0.5,
-        sortino_ratio: 0.6,
-        beta: 1.0,
-        max_drawdown: -0.1,
-        var_95: -0.02,
-        cvar_95: -0.03
-      },
-      asset_metrics: {},
-      discrete_allocation: {},
-      historical_performance: {
-        dates: ["2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-05-01"],
-        portfolio_values: {
-          "2023-01-01": 10000,
-          "2023-02-01": 10050,
-          "2023-03-01": 10100,
-          "2023-04-01": 10150,
-          "2023-05-01": 10200
+    try {
+      // Create a default data structure with guaranteed values for all required fields
+      const initialDefaultData: PortfolioAnalysis = {
+        allocations: {},
+        metrics: {
+          expected_return: 0.05, 
+          volatility: 0.1,
+          sharpe_ratio: 0.5,
+          sortino_ratio: 0.6,
+          beta: 1.0,
+          max_drawdown: -0.1,
+          var_95: -0.02,
+          cvar_95: -0.03
         },
-        drawdowns: {
-          "2023-01-01": 0,
-          "2023-02-01": 0,
-          "2023-03-01": 0,
-          "2023-04-01": -0.01,
-          "2023-05-01": -0.02
-        }
-      },
-      market_comparison: {
-        dates: ["2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-05-01"],
-        market_values: [10000, 10150, 10300, 10250, 10380],
-        relative_performance: [0, 0.5, 0.97, 0.49, 1.16]
-      },
-      ai_insights: {
-        explanations: {
-          english: {
-            summary: "This is a placeholder assessment. The portfolio appears balanced.",
-            risk_analysis: "Placeholder risk analysis.",
-            diversification_analysis: "Placeholder diversification analysis.",
-            market_analysis: "Placeholder market analysis."
+        asset_metrics: {},
+        discrete_allocation: {},
+        historical_performance: {
+          dates: ["2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-05-01"],
+          portfolio_values: {
+            "2023-01-01": 10000,
+            "2023-02-01": 10050,
+            "2023-03-01": 10100,
+            "2023-04-01": 10150,
+            "2023-05-01": 10200
+          },
+          drawdowns: {
+            "2023-01-01": 0,
+            "2023-02-01": 0,
+            "2023-03-01": 0,
+            "2023-04-01": -0.01,
+            "2023-05-01": -0.02
           }
         },
-        recommendations: ["Consider diversifying across more sectors.", "Review allocation of high-volatility assets."]
-      }
-    };
+        market_comparison: {
+          dates: ["2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-05-01"],
+          market_values: [10000, 10150, 10300, 10250, 10380],
+          relative_performance: [0, 0.5, 0.97, 0.49, 1.16]
+        },
+        ai_insights: {
+          explanations: {
+            english: {
+              summary: "This is a placeholder assessment. The portfolio appears balanced.",
+              risk_analysis: "Placeholder risk analysis.",
+              diversification_analysis: "Placeholder diversification analysis.",
+              market_analysis: "Placeholder market analysis."
+            }
+          },
+          recommendations: ["Consider diversifying across more sectors.", "Review allocation of high-volatility assets."]
+        }
+      };
 
-    try {
       // Make the API request
       const response = await fetch(`${API_URL}/analyze-portfolio-simple`, {
         method: 'POST',
@@ -256,6 +256,11 @@ function App() {
             
             try {
               if (data) {
+                // Validate the response data
+                if (!validatePortfolioData(data)) {
+                  throw new Error('Invalid portfolio data received from server');
+                }
+                
                 // Merge API data with default data to ensure all fields exist
                 analysisData = mergeWithDefaults(data, initialDefaultData);
               }
@@ -343,7 +348,9 @@ function App() {
       }
     } catch (error) {
       console.error("Error in portfolio analysis:", error);
-      setError("Failed to analyze portfolio. Please try again.");
+      setError(error instanceof Error ? error.message : "Failed to analyze portfolio. Please try again.");
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -421,20 +428,42 @@ function App() {
       let alpacaSettings: AlpacaSettings | null = null;
       
       if (savedSettings) {
-        alpacaSettings = JSON.parse(savedSettings) as AlpacaSettings;
-        console.log('Using Alpaca settings:', {
-          apiKey: alpacaSettings.apiKey ? '****' + alpacaSettings.apiKey.slice(-4) : 'not set',
-          secretKey: alpacaSettings.secretKey ? '****' + alpacaSettings.secretKey.slice(-4) : 'not set',
-          isPaper: alpacaSettings.isPaper
-        });
+        try {
+          alpacaSettings = JSON.parse(savedSettings) as AlpacaSettings;
+          console.log('Using Alpaca settings:', {
+            apiKey: alpacaSettings.apiKey ? '****' + alpacaSettings.apiKey.slice(-4) : 'not set',
+            secretKey: alpacaSettings.secretKey ? '****' + alpacaSettings.secretKey.slice(-4) : 'not set',
+            isPaper: alpacaSettings.isPaper
+          });
+        } catch (parseError) {
+          console.error('Error parsing Alpaca settings:', parseError);
+          setError('Invalid Alpaca settings. Please reconfigure in Settings.');
+          setSettingsOpen(true);
+          setLoading(false);
+          return;
+        }
       } else {
         console.log('No Alpaca settings found in localStorage');
       }
       
-      // Check if API keys are available
+      // Validate Alpaca settings
       if (!alpacaSettings?.apiKey || !alpacaSettings?.secretKey) {
-        setError('Alpaca API keys are required. Please configure them in Settings.');
+        setError('Alpaca API keys are required for paper trading. Please configure them in Settings.');
         setSettingsOpen(true);
+        setLoading(false);
+        return;
+      }
+
+      // Validate portfolio data
+      if (!analysis.allocations || Object.keys(analysis.allocations).length === 0) {
+        setError('No valid portfolio allocations found. Please analyze your portfolio first.');
+        setLoading(false);
+        return;
+      }
+
+      // Validate discrete allocation
+      if (!analysis.discrete_allocation || Object.keys(analysis.discrete_allocation).length === 0) {
+        setError('No valid discrete allocation found. Please analyze your portfolio first.');
         setLoading(false);
         return;
       }
@@ -442,20 +471,36 @@ function App() {
       // Use the AI rebalance explanation endpoint
       const response = await axios.post(`${API_URL}/ai-rebalance-explanation`, {
         allocations: analysis.allocations,
+        discrete_allocation: analysis.discrete_allocation,
         alpaca_api_key: alpacaSettings.apiKey,
         alpaca_secret_key: alpacaSettings.secretKey,
-        use_paper_trading: alpacaSettings.isPaper
+        use_paper_trading: alpacaSettings.isPaper,
+        portfolio_value: 10000 // Default paper trading value
       });
       
       console.log('Rebalancing response:', response.data);
+      
+      // Validate rebalance result
+      if (!response.data || !response.data.orders) {
+        setError('Invalid rebalance response from server. Please try again.');
+        setLoading(false);
+        return;
+      }
+
       setRebalanceResult(response.data);
+      
+      // Show success message
+      setError('Portfolio rebalanced successfully! Check the orders tab for details.');
+      
     } catch (err: any) {
+      console.error('Rebalance error:', err);
       if (err.response?.data?.detail) {
         setError(`Error: ${err.response.data.detail}`);
+      } else if (err.message) {
+        setError(`Error: ${err.message}`);
       } else {
         setError('Error rebalancing portfolio. Please try again.');
       }
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -739,6 +784,41 @@ function App() {
     }
     
     return result;
+  }
+
+  // Add a new function to validate portfolio data
+  const validatePortfolioData = (data: PortfolioAnalysis): boolean => {
+    if (!data) return false;
+    
+    // Check allocations
+    if (!data.allocations || Object.keys(data.allocations).length === 0) {
+      console.error('Missing or empty allocations');
+      return false;
+    }
+    
+    // Check metrics
+    if (!data.metrics || !data.metrics.expected_return || !data.metrics.volatility) {
+      console.error('Missing or invalid metrics');
+      return false;
+    }
+    
+    // Check historical performance
+    if (!data.historical_performance || 
+        !data.historical_performance.dates || 
+        !data.historical_performance.portfolio_values) {
+      console.error('Missing or invalid historical performance data');
+      return false;
+    }
+    
+    // Check market comparison
+    if (!data.market_comparison || 
+        !data.market_comparison.dates || 
+        !data.market_comparison.market_values) {
+      console.error('Missing or invalid market comparison data');
+      return false;
+    }
+    
+    return true;
   }
 
   return (
