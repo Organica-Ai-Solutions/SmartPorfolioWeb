@@ -10,10 +10,10 @@
     "type-check": "tsc -b",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "predeploy": "npm run build",
+    "predeploy": "cross-env DEPLOY_TARGET=github-pages npm run build",
     "deploy": "gh-pages -d dist",
     "test-local": "vite build && python3 -m http.server -d dist 8080",
-    "test-production": "cross-env NODE_ENV=production vite build && python3 -m http.server -d dist 8080"
+    "test-github": "cross-env DEPLOY_TARGET=github-pages vite build && python3 -m http.server -d dist 8080"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.17",

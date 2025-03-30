@@ -14,7 +14,7 @@ import { PerformanceChart } from './components/PerformanceChart'
 import { HeaderComponent } from './components/HeaderComponent'
 import { HeroComponent } from './components/HeroComponent'
 import { SentimentAnalysis } from './components/SentimentAnalysis'
-import { ChartBarIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
+import { ChartBarIcon, ChatBubbleLeftRightIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { API_URL as BASE_API_URL } from './config'
 
 ChartJS.register(
@@ -139,8 +139,8 @@ function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          tickers: portfolio.tickers,
-          start_date: portfolio.start_date,
+        tickers: portfolio.tickers,
+        start_date: portfolio.start_date,
           risk_tolerance: portfolio.risk_tolerance,
         }),
       });
@@ -186,6 +186,16 @@ function App() {
         throw new Error('Invalid response data')
       }
 
+      // Check if we're using real or mock data
+      const isRealData = response.data.metadata?.is_real_data === true
+      if (isRealData) {
+        console.log('Using REAL market data from:', response.data.metadata.data_source)
+        console.log('Data points:', response.data.metadata.data_points)
+        console.log('Date range:', response.data.metadata.date_range)
+      } else {
+        console.warn('Using MOCK data - real market data could not be retrieved')
+      }
+
       // Update the analysis state with the response data
       setAnalysis(response.data)
       
@@ -200,6 +210,10 @@ function App() {
       }
 
       setError('')
+      // Add an informational message if using mock data
+      if (!isRealData) {
+        setError('Using simulated data for analysis. Real market data could not be retrieved.')
+      }
       console.log('Portfolio analysis completed successfully')
       
     } catch (error: any) {
@@ -380,11 +394,11 @@ function App() {
         datasets: [{
           data,
           backgroundColor: [
-            'rgba(255, 99, 132, 0.8)',
-            'rgba(54, 162, 235, 0.8)',
-            'rgba(255, 206, 86, 0.8)',
-            'rgba(75, 192, 192, 0.8)',
-            'rgba(153, 102, 255, 0.8)',
+          'rgba(255, 99, 132, 0.8)',
+          'rgba(54, 162, 235, 0.8)',
+          'rgba(255, 206, 86, 0.8)',
+          'rgba(75, 192, 192, 0.8)',
+          'rgba(153, 102, 255, 0.8)',
           ],
           borderColor: [
             'rgba(255, 99, 132, 1)',
@@ -393,8 +407,8 @@ function App() {
             'rgba(75, 192, 192, 1)',
             'rgba(153, 102, 255, 1)',
           ],
-          borderWidth: 1
-        }]
+              borderWidth: 1
+            }]
       })
     }
   }, [analysis?.allocations])
@@ -684,251 +698,236 @@ function App() {
   };
 
   return (
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-800 dark:text-gray-200">
     <TooltipProvider>
-      <div className="relative min-h-screen bg-[#030303] text-white">
-        {/* Background sparkles */}
-        <div className="fixed inset-0 w-full h-full pointer-events-none">
-          <SparklesCore
-            id="tsparticlesfullpage"
-            background="transparent"
-            minSize={0.8}
-            maxSize={1.6}
-            particleDensity={100}
-            className="w-full h-full"
-            particleColor="#FFFFFF"
-            speed={1}
-          />
-        </div>
-
-        <div className="relative z-10 min-h-screen py-8 px-4">
-          <div className="container mx-auto max-w-6xl">
-            {/* Use our custom header and hero components */}
-            <HeaderComponent onSettingsClick={() => setSettingsOpen(true)} />
+        <div className="container mx-auto px-4 py-8">
+          <HeaderComponent />
+          
+          {!analysis && (
             <HeroComponent />
-
-            {/* Main card */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="relative bg-[#0a0a0a]/95 backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-2xl border border-white/10 mt-8"
-            >
-              <div className="border-b border-gray-700 mb-8">
-                <nav className="-mb-px flex space-x-8">
-                  <TabButton
-                    name="portfolio"
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                  >
-                    Portfolio
-                  </TabButton>
-                  <TabButton
-                    name="watchlist"
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                  >
-                    Watchlist
-                  </TabButton>
-                  <TabButton name="insights" activeTab={activeTab} setActiveTab={setActiveTab}>
-                    <ChartBarIcon className="h-5 w-5" />
-                    <span>Insights</span>
-                  </TabButton>
-                  {sentimentData && (
-                    <TabButton name="sentiment" activeTab={activeTab} setActiveTab={setActiveTab}>
-                      <ChatBubbleLeftRightIcon className="h-5 w-5" />
-                      <span>Sentiment</span>
-                    </TabButton>
-                  )}
-                </nav>
+          )}
+          
+          <div className="mt-8 max-w-4xl mx-auto">
+            {error && (
+              <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
+                <p>{error}</p>
                 </div>
-
-              {activeTab === 'portfolio' && (
-      <div>
-                  {/* Portfolio Management Section */}
-                  <div className="mb-6">
-                    <h2 className="text-2xl font-bold mb-4">Portfolio Management</h2>
-                    
-                    {/* Ticker Input */}
-                    <div className="mb-4">
-                      <TickerSuggestions onSelectTicker={addTicker} />
+            )}
+            
+            {/* Data source indicator if we have analysis */}
+            {analysis && analysis.metadata && (
+              <div className={`mb-4 p-3 rounded-md text-sm ${analysis.metadata.is_real_data ? 
+                'bg-green-100 text-green-800 border-l-4 border-green-500 dark:bg-green-900 dark:text-green-100' : 
+                'bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 dark:bg-yellow-900 dark:text-yellow-100'}`}>
+                <p className="font-medium">
+                  {analysis.metadata.is_real_data ? 
+                    `Using real market data from ${analysis.metadata.data_source}` : 
+                    'Using simulated market data'
+                  }
+                </p>
+                {analysis.metadata.is_real_data && (
+                  <p className="text-xs mt-1 opacity-80">
+                    {analysis.metadata.data_points} data points from {analysis.metadata.date_range?.start} to {analysis.metadata.date_range?.end}
+                  </p>
+                )}
+              </div>
+            )}
+            
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+              <h2 className="text-xl font-semibold mb-4">Selected Tickers</h2>
+              <div className="flex flex-wrap gap-2 mb-6">
+                {portfolio.tickers.map((ticker, i) => (
+                  <div key={i} className="flex items-center bg-blue-100 dark:bg-blue-900 px-3 py-1 rounded-full text-blue-800 dark:text-blue-100">
+                    {ticker}
+                    <button onClick={() => removeTicker(ticker)} className="ml-2 text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-100">
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+                {portfolio.tickers.length === 0 && (
+                  <p className="text-gray-500 dark:text-gray-400">Add tickers to analyze</p>
+                )}
                     </div>
                     
-                    {/* Selected Tickers */}
-                    <div className="mb-4">
-                      <h3 className="text-xl font-semibold mb-2">Selected Tickers</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {portfolio.tickers.map(ticker => (
-                          <div 
-                        key={ticker}
-                            className="bg-slate-700 px-3 py-1 rounded-full flex items-center gap-2"
-                          >
-                            <span>{ticker}</span>
+              <div className="flex items-center mb-6">
+                <input
+                  type="text"
+                  value={newTicker}
+                  onChange={(e) => setNewTicker(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      addTicker(newTicker);
+                    }
+                  }}
+                  placeholder="Add ticker (e.g., AAPL, MSFT, BTC-USD)"
+                  className="border rounded p-2 flex-1 dark:bg-gray-700 dark:border-gray-600"
+                />
                         <button
-                          onClick={() => removeTicker(ticker)}
-                              className="text-slate-400 hover:text-white"
+                  onClick={() => addTicker(newTicker)}
+                  className="ml-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
                         >
-                              &times;
+                  Add
                         </button>
                           </div>
-                    ))}
-                      </div>
+              
+              {suggestions.length > 0 && (
+                <div className="mb-6">
+                  <TickerSuggestions
+                    suggestions={suggestions}
+                    onSelect={handleSuggestionSelect}
+                  />
                   </div>
-                </div>
+              )}
 
-                    {/* Risk Tolerance */}
-                    <div className="mb-4">
-                      <h3 className="text-xl font-semibold mb-2">Risk Tolerance</h3>
+              <h2 className="text-xl font-semibold mb-4">Risk Tolerance</h2>
                       <select
                         value={portfolio.risk_tolerance}
                         onChange={(e) => setPortfolio({...portfolio, risk_tolerance: e.target.value})}
-                        className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 w-full"
+                className="border rounded p-2 w-full mb-6 dark:bg-gray-700 dark:border-gray-600"
                       >
                         <option value="low">Low</option>
                         <option value="medium">Medium</option>
                         <option value="high">High</option>
                       </select>
-                  </div>
 
-                    {/* Analysis Period */}
-                    <div className="mb-4">
-                      <h3 className="text-xl font-semibold mb-2">Analysis Period</h3>
+              <h2 className="text-xl font-semibold mb-4">Analysis Period</h2>
                   <select
-                        onChange={(e) => handlePeriodChange(e.target.value as TimePeriod)}
-                        className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 w-full"
+                value={today}
+                onChange={(e) => {
+                  handlePeriodChange(e.target.value as TimePeriod);
+                }}
+                className="border rounded p-2 w-full mb-6 dark:bg-gray-700 dark:border-gray-600"
                       >
                         <option value="3m">3 Months</option>
                         <option value="6m">6 Months</option>
-                        <option value="1y" selected>1 Year</option>
+                <option value="1y">1 Year</option>
                         <option value="5y">5 Years</option>
                         <option value="max">Max</option>
                   </select>
-                </div>
-
-                    {/* Analyze Button */}
-                    <div className="mb-4 flex flex-col md:flex-row gap-4">
-                      {/* Debug info for button state */}
-                      <div className="mb-2 p-2 bg-blue-900/30 rounded-lg text-xs">
-                        <p>Debug: Tickers: {portfolio.tickers.length > 0 ? portfolio.tickers.join(', ') : 'None'}</p>
-                        <p>Start date: {portfolio.start_date || 'Not set'}</p>
-                        <p>Loading: {loading ? 'Yes' : 'No'}</p>
-                        <p>Button should be enabled: {!(loading || portfolio.tickers.length === 0) ? 'Yes' : 'No'}</p>
+              
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                Debug: Tickers: {portfolio.tickers.join(', ')}<br />
+                Start date: {portfolio.start_date}<br />
+                Loading: {loading ? 'Yes' : 'No'}<br />
+                Button should be enabled: {portfolio.tickers.length > 0 ? 'Yes' : 'No'}
                       </div>
                       
                   <button
                     onClick={analyzePortfolio}
-                        disabled={loading || portfolio.tickers.length === 0}
-                        className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isAnalyzing || portfolio.tickers.length === 0}
+                className={`w-full py-3 rounded-md font-medium transition-colors ${
+                  isAnalyzing || portfolio.tickers.length === 0
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'
+                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                }`}
                       >
                         {isAnalyzing ? 'Analyzing...' : 'Analyze Portfolio'}
                   </button>
                   
+              {analysis && (
                   <button
                     onClick={rebalancePortfolio}
-                        disabled={!analysis || loading}
-                        className="px-6 py-3 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {loading ? 'Rebalancing...' : 'Rebalance Portfolio'}
+                  disabled={loading}
+                  className={`w-full mt-4 py-3 rounded-md font-medium transition-colors ${
+                    loading
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'
+                      : 'bg-green-500 text-white hover:bg-green-600'
+                  }`}
+                >
+                  {loading ? 'Processing...' : 'Rebalance Portfolio'}
                   </button>
-                </div>
-
-                    {/* Error Message */}
-                    {error && (
-                      <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-                        {error}
-                  </div>
                 )}
                   </div>
-              )}
-              {activeTab === 'watchlist' && <WatchlistTab stockData={stockData} />}
-              {activeTab === 'insights' && (
-                <div className="mt-8 border-t border-gray-700 pt-6">
-                  <h2 className="text-2xl font-bold mb-6">Portfolio Analysis Results</h2>
                   
-                  {isAnalyzing ? (
-                    <div className="flex justify-center items-center py-12">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                      <span className="ml-3">Analyzing portfolio...</span>
-                    </div>
-                  ) : !analysis ? (
-                    <div className="text-center py-12 text-gray-400">
-                      <p>No analysis data available. Please analyze your portfolio first.</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        {/* Performance Chart */}
-                        <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30">
-                          <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-semibold text-blue-400">Performance</h3>
+                  {analysis && (
+              <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                  <h2 className="text-xl font-semibold mb-4">Portfolio Allocation</h2>
+                          <AllocationChart allocations={analysis.allocations} />
                           </div>
-                          {chartData && <PerformanceChart data={chartData} />}
+                      
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                  <h2 className="text-xl font-semibold mb-4">Portfolio Metrics</h2>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Expected Return</p>
+                      <p className="text-xl font-semibold">{(analysis.metrics.expected_return * 100).toFixed(2)}%</p>
+                            </div>
+                                      <div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Volatility</p>
+                      <p className="text-xl font-semibold">{(analysis.metrics.volatility * 100).toFixed(2)}%</p>
+                                      </div>
+                                    <div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Sharpe Ratio</p>
+                      <p className="text-xl font-semibold">{analysis.metrics.sharpe_ratio.toFixed(2)}</p>
+                                    </div>
+                                    <div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Beta</p>
+                      <p className="text-xl font-semibold">{analysis.metrics.beta.toFixed(2)}</p>
+                                    </div>
+                            </div>
+                              </div>
+                              
+                <div className="md:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                  <h2 className="text-xl font-semibold mb-4">Performance</h2>
+                  <PerformanceChart data={analysis.historical_performance} />
+                                  </div>
+                                  
+                {sentimentData && (
+                  <div className="md:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <h2 className="flex items-center text-xl font-semibold mb-4">
+                      <ChatBubbleLeftRightIcon className="h-5 w-5 mr-2" />
+                      Market Sentiment
+                    </h2>
+                    <SentimentAnalysis data={sentimentData} />
+                                    </div>
+                )}
+                
+                {/* Crypto-specific information section */}
+                {analysis && analysis.asset_metrics && Object.keys(analysis.asset_metrics).some(ticker => 
+                  ticker.includes('-USD') || ticker.includes('-USDT')
+                ) && (
+                  <div className="md:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <h2 className="text-xl font-semibold mb-4">Cryptocurrency Assets</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {Object.entries(analysis.asset_metrics)
+                        .filter(([ticker]) => ticker.includes('-USD') || ticker.includes('-USDT'))
+                        .map(([ticker, metrics]) => (
+                          <div key={ticker} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                            <h3 className="text-lg font-medium text-blue-600 dark:text-blue-400">{ticker}</h3>
+                            <div className="mt-2 space-y-1">
+                              <p className="text-sm">
+                                <span className="text-gray-500 dark:text-gray-400">Weight: </span>
+                                <span className="font-medium">{(metrics.weight * 100).toFixed(2)}%</span>
+                              </p>
+                              <p className="text-sm">
+                                <span className="text-gray-500 dark:text-gray-400">Expected Return: </span>
+                                <span className="font-medium">{(metrics.annual_return * 100).toFixed(2)}%</span>
+                              </p>
+                              <p className="text-sm">
+                                <span className="text-gray-500 dark:text-gray-400">Volatility: </span>
+                                <span className="font-medium">{(metrics.annual_volatility * 100).toFixed(2)}%</span>
+                              </p>
+                              <p className="text-sm">
+                                <span className="text-gray-500 dark:text-gray-400">Sharpe Ratio: </span>
+                                <span className="font-medium">{metrics.sharpe_ratio.toFixed(2)}</span>
+                              </p>
+                                          </div>
+                            </div>
+                        ))}
+                          </div>
+                    <div className="mt-4 text-sm text-gray-500 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/30 p-3 rounded">
+                      <p>Cryptocurrency assets tend to have higher volatility than traditional assets. Consider your risk tolerance when allocating to these assets.</p>
                         </div>
-
-                        {/* Allocation Chart */}
-                        <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30">
-                          <h3 className="text-xl font-semibold mb-3 text-blue-400">Asset Allocation</h3>
-                          {analysis.allocations && <AllocationChart allocations={analysis.allocations} />}
-                        </div>
-                      </div>
-
-                      {/* Metrics */}
-                      <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30 mb-6">
-                        <h3 className="text-xl font-semibold mb-4 text-blue-400">Portfolio Metrics</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                          {analysis.metrics && (
-                            <>
-                              <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
-                                <div className="text-slate-400 text-sm">Expected Return</div>
-                                <div className="text-xl font-bold text-green-400">
-                                  {(analysis.metrics.expected_return * 100).toFixed(2)}%
-                                </div>
-                              </div>
-                              <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
-                                <div className="text-slate-400 text-sm">Volatility</div>
-                                <div className="text-xl font-bold text-yellow-400">
-                                  {(analysis.metrics.volatility * 100).toFixed(2)}%
-                                </div>
-                              </div>
-                              <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
-                                <div className="text-slate-400 text-sm">Sharpe Ratio</div>
-                                <div className="text-xl font-bold text-blue-400">
-                                  {analysis.metrics.sharpe_ratio.toFixed(2)}
-                                </div>
-                              </div>
-                              <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
-                                <div className="text-slate-400 text-sm">Max Drawdown</div>
-                                <div className="text-xl font-bold text-red-400">
-                                  {(analysis.metrics.max_drawdown * 100).toFixed(2)}%
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </>
+                    </div>
                   )}
                 </div>
               )}
-              {activeTab === 'sentiment' && sentimentData && (
-                <div className="mt-4">
-                  <SentimentAnalysis 
-                    sentimentData={sentimentData} 
-                    onTickerSelect={(ticker) => {
-                      // Optionally handle ticker selection, e.g., to show more details
-                      console.log("Selected ticker:", ticker);
-                    }}
-                  />
-                          </div>
-              )}
-            </motion.div>
           </div>
-        </div>
-
-        {/* Settings Dialog */}
-        <Settings isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       </div>
     </TooltipProvider>
-  )
+    </div>
+  );
 }
 
 // Define a WatchlistTab component

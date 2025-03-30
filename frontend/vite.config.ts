@@ -3,11 +3,10 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 // Determine the base path based on environment
-// Use empty string for local development and testing
-// Use /SmartPorfolioWeb/ for production GitHub Pages deployment
-const basePath = process.env.NODE_ENV === 'production' 
-  ? '/SmartPorfolioWeb/' 
-  : '/'
+// Use an explicit environment variable for GitHub Pages deployment
+// This way we can control it more precisely than NODE_ENV
+const isGitHubPages = process.env.DEPLOY_TARGET === 'github-pages'
+const basePath = isGitHubPages ? '/SmartPorfolioWeb/' : '/'
 
 // https://vitejs.dev/config/
 export default defineConfig({
