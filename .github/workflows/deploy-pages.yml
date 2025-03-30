@@ -12,13 +12,26 @@ jobs:
     steps:
       - name: Clone repository
         run: |
+          # Create and move to a clean directory
+          mkdir -p /tmp/build
+          cd /tmp/build
+          
+          # Clone the repository
           git clone https://${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git .
+          
+          # Verify clone was successful
+          if [ ! -d "frontend" ]; then
+            echo "Error: frontend directory not found after clone"
+            exit 1
+          fi
+          
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
         env:
           DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
 
       - name: Setup Node
+        working-directory: /tmp/build
         run: |
           curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
           sudo apt-get install -y nodejs
@@ -26,8 +39,8 @@ jobs:
           npm --version
 
       - name: Build Frontend
+        working-directory: /tmp/build/frontend
         run: |
-          cd frontend
           npm ci
           npm run build
         env:
@@ -36,17 +49,15 @@ jobs:
           VITE_ALPACA_API_KEY: ${{ secrets.VITE_ALPACA_API_KEY }}
           VITE_ALPACA_SECRET_KEY: ${{ secrets.VITE_ALPACA_SECRET_KEY }}
 
-      - name: Prepare deployment
+      - name: Deploy
+        working-directory: /tmp/build
         run: |
-          # Save the built files
-          mv frontend/dist /tmp/dist
-          
           # Create a fresh gh-pages branch
           git checkout --orphan gh-pages
           git rm -rf .
           
           # Copy the built files
-          cp -r /tmp/dist/* .
+          cp -r frontend/dist/* .
           touch .nojekyll
           
           # Configure git and commit
