@@ -6,48 +6,29 @@ on:
       - master
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  contents: write
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v2
+
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v2
         with:
-          node-version: '20'
+          node-version: '18'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
-      
-      - name: Install Dependencies
-        working-directory: frontend
-        run: npm ci
-      
-      - name: Build
-        working-directory: frontend
-        run: npm run build
-      
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
-        with:
-          path: frontend/dist
 
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v3 
+      - name: Install and Build
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
+
+      - name: Deploy
+        uses: peaceiris/gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./frontend/dist 
