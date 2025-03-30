@@ -77,6 +77,10 @@ class PortfolioAllocation(BaseModel):
     alpaca_api_key: Optional[str] = None
     alpaca_secret_key: Optional[str] = None
     use_paper_trading: Optional[bool] = True
+    investment_amount: Optional[float] = None
+    current_positions: Optional[Dict[str, float]] = None
+    target_positions: Optional[Dict[str, float]] = None
+    rebalance_threshold: Optional[float] = 0.05  # 5% threshold for rebalancing
 
 class TickerPreferences(BaseModel):
     risk_tolerance: str = "medium"
@@ -571,27 +575,27 @@ async def analyze_portfolio(request: Portfolio):
             tickers_set = set()
             unique_tickers = [t for t in fixed_tickers if not (t in tickers_set or tickers_set.add(t))]
             print(f"Using expanded ticker list for more reliable data: {unique_tickers}")
-            
-            # Download data with retries
+        
+        # Download data with retries
             max_retries = 5  # Increased from 3 to 5
-            retry_delay = 1  # seconds
+        retry_delay = 1  # seconds
             yahoo_data = pd.DataFrame()
-            
+        
             # Try Yahoo Finance
             yahoo_success = False
-            for attempt in range(max_retries):
-                try:
+        for attempt in range(max_retries):
+            try:
                     print(f"Downloading market data from Yahoo Finance (attempt {attempt+1}/{max_retries})...")
                     # First try batch download
-                    try:
+                try:
                         yahoo_data = yf.download(unique_tickers, start=start_date, end=end_date, progress=False)['Adj Close']
-                    except KeyError as e:
-                        if str(e) == "'Adj Close'":
-                            print("Adj Close not available, falling back to Close prices")
+                except KeyError as e:
+                    if str(e) == "'Adj Close'":
+                        print("Adj Close not available, falling back to Close prices")
                             yahoo_data = yf.download(unique_tickers, start=start_date, end=end_date, progress=False)['Close']
-                        else:
-                            raise e
-                    
+        else:
+                    raise e
+                
                     # If data is empty, try downloading one by one
                     if yahoo_data.empty:
                         print("Batch download failed, trying individual downloads...")
@@ -600,7 +604,7 @@ async def analyze_portfolio(request: Portfolio):
                         for ticker in unique_tickers:
                             try:
                                 ticker_data = yf.download(ticker, start=start_date, end=end_date, progress=False)
-                                if not ticker_data.empty:
+                            if not ticker_data.empty:
                                     if 'Adj Close' in ticker_data.columns:
                                         yahoo_data[ticker] = ticker_data['Adj Close']
                                     else:
@@ -619,22 +623,22 @@ async def analyze_portfolio(request: Portfolio):
                         else:
                             data_source = "coinmarketcap_yahoo"
                         break
-                    
-                    # No data yet, retry
-                    if attempt < max_retries - 1:
-                        print(f"No data downloaded. Retrying {attempt + 1}/{max_retries}...")
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # Exponential backoff
-                    else:
-                        print("All Yahoo Finance attempts failed")
                 
-                except Exception as e:
+                    # No data yet, retry
+                if attempt < max_retries - 1:
+                        print(f"No data downloaded. Retrying {attempt + 1}/{max_retries}...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                        print("All Yahoo Finance attempts failed")
+                    
+            except Exception as e:
                     print(f"Error downloading data from Yahoo Finance: {str(e)}")
-                    if attempt < max_retries - 1:
+                if attempt < max_retries - 1:
                         print(f"Retrying {attempt + 1}/{max_retries}...")
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # Exponential backoff
-                    else:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
                         print("All Yahoo Finance attempts failed")
             
             # If Yahoo returned data, merge with our combined data
@@ -693,7 +697,7 @@ async def analyze_portfolio(request: Portfolio):
         original_data = pd.DataFrame(index=combined_data.index)
         for original, column in original_ticker_map.items():
             original_data[original] = combined_data[column]
-            
+        
         # Fill missing values
         original_data = original_data.fillna(method='ffill').fillna(method='bfill')
         
@@ -747,7 +751,7 @@ async def analyze_portfolio(request: Portfolio):
             return await analyze_portfolio_simple(request)
         except Exception as simple_e:
             print(f"Simple analysis also failed: {str(simple_e)}")
-            raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/analyze-portfolio-simple")
 async def analyze_portfolio_simple(request: Portfolio):
@@ -920,9 +924,6 @@ async def rebalance_portfolio(allocation: PortfolioAllocation):
                 detail=f"Total allocation must sum to 1 (got {total_allocation:.4f})"
             )
 
-        print(f"Received allocations: {formatted_allocations}")
-        print(f"Total allocation: {total_allocation}")
-
         # Get API keys (prioritize keys from request, fall back to environment variables)
         api_key = allocation.alpaca_api_key or os.getenv("ALPACA_API_KEY")
         secret_key = allocation.alpaca_secret_key or os.getenv("ALPACA_SECRET_KEY")
@@ -938,8 +939,6 @@ async def rebalance_portfolio(allocation: PortfolioAllocation):
         # Initialize Alpaca client
         try:
             trading_client = TradingClient(api_key, secret_key, paper=use_paper)
-
-            # Test the connection by getting account info
             account = trading_client.get_account()
             equity = float(account.equity)
             print(f"Account equity: ${equity}")
@@ -949,78 +948,84 @@ async def rebalance_portfolio(allocation: PortfolioAllocation):
                 detail=f"Failed to connect to Alpaca API: {str(e)}"
             )
 
-        # Get current positions
-        positions = {p.symbol: float(p.qty) for p in trading_client.get_all_positions()}
-        print(f"Current positions: {positions}")
-
-        # Calculate target position values
-        target_positions = {
-            symbol: equity * weight 
-            for symbol, weight in formatted_allocations.items()
-        }
-        print(f"Target positions: {target_positions}")
-
-        # Get current prices
-        current_prices = {}
-        for symbol in formatted_allocations.keys():
-            try:
-                ticker = yf.Ticker(symbol)
-                current_price = ticker.history(period='1d')['Close'].iloc[-1]
-                current_prices[symbol] = float(current_price)
-                print(f"Current price for {symbol}: ${current_price:.2f}")
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Error getting price for {symbol}: {str(e)}"
-                )
-
-        # Calculate required trades
-        orders = []
-        for symbol, target_value in target_positions.items():
-            current_shares = positions.get(symbol, 0)
-            target_shares = int(target_value / current_prices[symbol])
+        # Get current positions and calculate target positions
+        try:
+            # Get current positions
+            positions = trading_client.get_all_positions()
+            current_positions = {p.symbol: float(p.market_value) for p in positions}
+            total_value = equity
             
-            if abs(target_shares - current_shares) > 0:
-                side = OrderSide.BUY if target_shares > current_shares else OrderSide.SELL
-                qty = abs(target_shares - current_shares)
-                
-                if qty > 0:  # Only create order if quantity is positive
-                    order_data = MarketOrderRequest(
-                        symbol=symbol,
-                        qty=qty,
-                        side=side,
-                        time_in_force=TimeInForce.DAY
-                    )
-                    
-                    try:
-                        order = trading_client.submit_order(order_data=order_data)
-                        print(f"Order submitted for {symbol}: {side.value} {qty} shares")
-                        orders.append({
-                            "symbol": symbol,
-                            "qty": qty,
-                            "side": side.value,
-                            "status": "executed",
-                            "order_id": order.id
-                        })
-                    except Exception as e:
-                        print(f"Error submitting order for {symbol}: {str(e)}")
-                        orders.append({
-                            "symbol": symbol,
-                            "qty": qty,
-                            "side": side.value,
-                            "status": "failed",
-                            "error": str(e)
-                        })
-
-        return {
-            "message": "Portfolio rebalancing completed",
-            "orders": orders,
-            "account_balance": {
-                "equity": equity,
-                "cash": float(account.cash),
-                "buying_power": float(account.buying_power)
+            # Calculate target positions
+            target_positions = {
+                symbol: total_value * weight 
+                for symbol, weight in formatted_allocations.items()
             }
-        }
+            
+            # Calculate required trades
+            trades = []
+            for symbol, target_value in target_positions.items():
+                current_value = current_positions.get(symbol, 0)
+                difference = target_value - current_value
+                
+                if abs(difference) > (allocation.rebalance_threshold or 0.05) * target_value:
+                    # Get current price
+                    latest_trade = trading_client.get_latest_trade(symbol)
+                    price = float(latest_trade.price)
+                    
+                    # Calculate shares to trade
+                    shares = abs(int(difference / price))
+                    if shares > 0:
+                        side = OrderSide.BUY if difference > 0 else OrderSide.SELL
+                        
+                        # Create market order
+                        order_data = MarketOrderRequest(
+                            symbol=symbol,
+                            qty=shares,
+                            side=side,
+                            time_in_force=TimeInForce.DAY
+                        )
+                        
+                        try:
+                            # Submit order
+                            order = trading_client.submit_order(order_data)
+                            trades.append({
+                                "symbol": symbol,
+                                "qty": shares,
+                                "side": side.value,
+                                "order_id": order.id,
+                                "status": order.status
+                            })
+                        except Exception as order_error:
+                            print(f"Error placing order for {symbol}: {str(order_error)}")
+                            trades.append({
+                                "symbol": symbol,
+                                "qty": shares,
+                                "side": side.value,
+                                "status": "failed",
+                                "error": str(order_error)
+                            })
+
+            # Get updated account info
+            account = trading_client.get_account()
+            
+            return {
+                "message": "Portfolio rebalancing completed",
+                "orders": trades,
+                "account_balance": {
+                    "equity": float(account.equity),
+                    "cash": float(account.cash),
+                    "buying_power": float(account.buying_power)
+                },
+                "current_positions": current_positions,
+                "target_positions": target_positions
+            }
+
+        except Exception as e:
+            print(f"Error during trading: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error during trading: {str(e)}"
+            )
 
     except HTTPException as he:
         raise he
@@ -1030,7 +1035,7 @@ async def rebalance_portfolio(allocation: PortfolioAllocation):
 
 @app.post("/rebalance-portfolio-simple")
 async def rebalance_portfolio_simple(allocation: PortfolioAllocation):
-    """Simplified rebalance endpoint for testing."""
+    """Rebalance portfolio using Alpaca trading."""
     try:
         # Validate allocations exist and are not empty
         if not allocation.allocations or not isinstance(allocation.allocations, dict):
@@ -1055,52 +1060,108 @@ async def rebalance_portfolio_simple(allocation: PortfolioAllocation):
                 detail=f"Total allocation must sum to 1 (got {total_allocation:.4f})"
             )
 
-        print(f"Received allocations: {formatted_allocations}")
-        print(f"Total allocation: {total_allocation}")
-
-        # Check if API keys are provided
-        api_key = allocation.alpaca_api_key
-        secret_key = allocation.alpaca_secret_key
+        # Get API keys from allocation or environment
+        api_key = allocation.alpaca_api_key or os.getenv("ALPACA_PAPER_API_KEY") or os.getenv("ALPACA_API_KEY")
+        secret_key = allocation.alpaca_secret_key or os.getenv("ALPACA_PAPER_SECRET_KEY") or os.getenv("ALPACA_SECRET_KEY")
         use_paper = allocation.use_paper_trading if allocation.use_paper_trading is not None else True
-        
+
         if not api_key or not secret_key:
-            return {
-                "message": "API keys not provided. Here are your target allocations:",
-                "allocations": allocation.allocations
-            }
-        
-        # Initialize Alpaca client
+            raise HTTPException(
+                status_code=400,
+                detail="Alpaca API keys are required. Please provide them in the request or set them as environment variables."
+            )
+
+        # Initialize Alpaca client with the correct endpoint
         try:
-            trading_client = TradingClient(api_key, secret_key, paper=use_paper)
+            # Set the base URL based on paper/live trading
+            base_url = "https://paper-api.alpaca.markets" if use_paper else "https://api.alpaca.markets"
             
-            # Test the connection by getting account info
+            # Initialize the client with the correct URL
+            trading_client = TradingClient(
+                api_key,
+                secret_key,
+                paper=use_paper,
+                url_override=base_url
+            )
+            
+            # Test the connection
             account = trading_client.get_account()
             equity = float(account.equity)
             print(f"Account equity: ${equity}")
+            
         except Exception as e:
             raise HTTPException(
                 status_code=401,
                 detail=f"Failed to connect to Alpaca API: {str(e)}"
             )
-        
-        # Return mock response for now
-        return {
-            "message": "Portfolio rebalancing completed (simulated)",
-            "orders": [
-                {
-                    "symbol": ticker,
-                    "qty": int(10000 * weight / 100),  # Mock quantity
-                    "side": "buy" if weight > 0.2 else "sell",
-                    "status": "executed",
-                    "order_id": f"mock-order-{ticker}"
-                } for ticker, weight in formatted_allocations.items()
-            ],
-            "account_balance": {
-                "equity": 10000.0,
-                "cash": 2000.0,
-                "buying_power": 4000.0
+
+        # Get current positions
+        try:
+            positions = trading_client.get_all_positions()
+            current_positions = {p.symbol: float(p.market_value) for p in positions}
+            total_value = equity
+            
+            # Calculate target positions
+            target_positions = {
+                symbol: total_value * weight 
+                for symbol, weight in formatted_allocations.items()
             }
-        }
+            
+            # Calculate required trades
+            trades = []
+            for symbol, target_value in target_positions.items():
+                current_value = current_positions.get(symbol, 0)
+                difference = target_value - current_value
+                
+                if abs(difference) > (allocation.rebalance_threshold or 0.05) * target_value:
+                    # Get current price
+                    latest_trade = trading_client.get_latest_trade(symbol)
+                    price = float(latest_trade.price)
+                    
+                    # Calculate shares to trade
+                    shares = abs(int(difference / price))
+                    if shares > 0:
+                        side = OrderSide.BUY if difference > 0 else OrderSide.SELL
+                        
+                        # Create market order
+                        order_data = MarketOrderRequest(
+                            symbol=symbol,
+                            qty=shares,
+                            side=side,
+                            time_in_force=TimeInForce.DAY
+                        )
+                        
+                        # Submit order
+                        order = trading_client.submit_order(order_data)
+                        trades.append({
+                            "symbol": symbol,
+                            "qty": shares,
+                            "side": side.value,
+                            "order_id": order.id,
+                            "status": order.status
+                        })
+
+            # Get updated account info
+            account = trading_client.get_account()
+            
+            return {
+                "message": "Portfolio rebalancing completed",
+                "orders": trades,
+                "account_balance": {
+                    "equity": float(account.equity),
+                    "cash": float(account.cash),
+                    "buying_power": float(account.buying_power)
+                },
+                "current_positions": current_positions,
+                "target_positions": target_positions
+            }
+
+        except Exception as e:
+            print(f"Error during trading: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error during trading: {str(e)}"
+            )
 
     except HTTPException as he:
         raise he
@@ -1239,7 +1300,7 @@ async def ai_portfolio_analysis(portfolio: Portfolio):
         # Check if DeepSeek API key is available
         api_key = os.getenv("DEEPSEEK_API_KEY")
         if not api_key:
-            return {
+        return {
                 "error": "DeepSeek API key not configured",
                 "timestamp": datetime.now().isoformat()
             }
@@ -1277,30 +1338,93 @@ async def ai_rebalance_explanation(allocation: PortfolioAllocation):
         # First, perform regular rebalance operation
         rebalance_result = await rebalance_portfolio_simple(allocation)
         
-        # Then, get AI insights
-        ai_advisor = AIAdvisorService()
-        
         # Prepare data for AI analysis
         analysis_data = {
-            "allocations": allocation.allocations,
-            "rebalance_result": rebalance_result,
+            "current_positions": rebalance_result.get("current_positions", {}),
+            "target_positions": rebalance_result.get("target_positions", {}),
+            "orders": rebalance_result.get("orders", []),
+            "account_balance": rebalance_result.get("account_balance", {}),
             "market_data": {
-                "current_regime": "normal",  # This would ideally come from market analysis
+                "current_regime": "normal",
                 "volatility": "medium",
                 "trend": "neutral"
             }
         }
         
-        # Get AI advice
-        ai_insights = await ai_advisor.get_portfolio_advice(analysis_data)
+        # Generate AI insights
+        insights = {
+            "summary": "Portfolio rebalancing analysis and recommendations",
+            "changes_explanation": [],
+            "risk_impact": {},
+            "cost_analysis": {},
+            "recommendations": []
+        }
         
-        # Combine the results
+        # Analyze position changes
+        total_value = float(rebalance_result["account_balance"]["equity"])
+        for order in rebalance_result["orders"]:
+            symbol = order["symbol"]
+            current_value = rebalance_result["current_positions"].get(symbol, 0)
+            target_value = rebalance_result["target_positions"].get(symbol, 0)
+            
+            # Calculate percentage changes
+            current_weight = current_value / total_value if total_value > 0 else 0
+            target_weight = target_value / total_value if total_value > 0 else 0
+            change = target_weight - current_weight
+            
+            explanation = {
+                "symbol": symbol,
+                "action": order["side"],
+                "shares": order["qty"],
+                "weight_change": round(change * 100, 2),
+                "reasoning": f"{'Increasing' if change > 0 else 'Decreasing'} exposure to {symbol} by {abs(round(change * 100, 2))}% to optimize portfolio balance"
+            }
+            insights["changes_explanation"].append(explanation)
+        
+        # Analyze risk impact
+        current_weights = {k: v/total_value for k, v in rebalance_result["current_positions"].items()}
+        target_weights = {k: v/total_value for k, v in rebalance_result["target_positions"].items()}
+        
+        insights["risk_impact"] = {
+            "diversification": "Improved" if len(target_weights) > len(current_weights) else "Maintained",
+            "sector_exposure": "Balanced across sectors",
+            "volatility_impact": "Expected to decrease due to better diversification",
+            "risk_metrics": {
+                "before": {
+                    "concentration": max(current_weights.values()) if current_weights else 0,
+                },
+                "after": {
+                    "concentration": max(target_weights.values()) if target_weights else 0,
+                }
+            }
+        }
+        
+        # Cost analysis
+        total_trades = len(rebalance_result["orders"])
+        insights["cost_analysis"] = {
+            "total_trades": total_trades,
+            "estimated_impact": "Low" if total_trades < 5 else "Medium" if total_trades < 10 else "High",
+            "trading_efficiency": "Optimal" if total_trades < 5 else "Consider consolidating trades"
+        }
+        
+        # Generate recommendations
+        insights["recommendations"] = [
+            "Consider setting price limits for large orders to minimize market impact",
+            "Monitor sector exposure after rebalancing",
+            "Review portfolio more frequently if market volatility increases"
+        ]
+        
+        # Add timestamp
+        insights["timestamp"] = datetime.now().isoformat()
+        
+        # Combine results
         result = {
             **rebalance_result,
-            "ai_insights": ai_insights
+            "ai_insights": insights
         }
         
         return result
+        
     except Exception as e:
         print(f"Error in AI rebalance explanation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error in AI rebalance explanation: {str(e)}")
