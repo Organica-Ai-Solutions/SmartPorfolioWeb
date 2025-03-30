@@ -36,15 +36,18 @@ jobs:
         working-directory: ./frontend
         run: npm run build
         env:
+          DEPLOY_TARGET: github-pages
           VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL }}
           VITE_POLYGON_API_KEY: ${{ secrets.VITE_POLYGON_API_KEY }}
           VITE_ALPACA_API_KEY: ${{ secrets.VITE_ALPACA_API_KEY }}
           VITE_ALPACA_SECRET_KEY: ${{ secrets.VITE_ALPACA_SECRET_KEY }}
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
+          name: github-pages
           path: frontend/dist
+          if-no-files-found: error
 
   deploy:
     needs: build
