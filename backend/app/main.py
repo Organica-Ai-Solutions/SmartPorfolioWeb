@@ -25,6 +25,7 @@ import random
 import requests
 import pandas_datareader as pdr
 from pandas_datareader import data as web
+from app.services.crypto_service import CryptoService
 
 # Load environment variables
 load_dotenv()
@@ -44,6 +45,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize services
+crypto_service = CryptoService()
 
 @app.get("/health")
 async def health_check():
@@ -513,108 +517,150 @@ async def analyze_portfolio(request: Portfolio):
                 
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+        # Separate crypto and stock tickers
+        crypto_tickers = [ticker for ticker in request.tickers if crypto_service.is_crypto_ticker(ticker)]
+        stock_tickers = [ticker for ticker in request.tickers if ticker not in crypto_tickers]
         
-        # Make crypto tickers more reliable by trying alternative formats
-        fixed_tickers = []
-        for ticker in request.tickers:
-            if ticker.endswith('-USD'):
-                # Add both formats to increase chances of finding data
-                fixed_tickers.append(ticker)
-                fixed_tickers.append(ticker.replace('-USD', '-USDT'))
-                # Also try BTC format which might work better
-                if ticker.startswith('BTC'):
-                    fixed_tickers.append('BTC-USD')
-            elif ticker.endswith('-USDT'):
-                fixed_tickers.append(ticker)
-                fixed_tickers.append(ticker.replace('-USDT', '-USD'))
-            else:
-                fixed_tickers.append(ticker)
-                # For stock tickers, ensure we have the right format
-                if '-' not in ticker and '.' not in ticker:
-                    # Try adding exchange suffixes for international stocks
-                    if ticker not in ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA']:
-                        fixed_tickers.append(f"{ticker}.US")
+        print(f"Identified {len(crypto_tickers)} crypto tickers: {crypto_tickers}")
+        print(f"Identified {len(stock_tickers)} stock tickers: {stock_tickers}")
         
-        # Deduplicate tickers while preserving order
-        tickers_set = set()
-        unique_tickers = [t for t in fixed_tickers if not (t in tickers_set or tickers_set.add(t))]
-        print(f"Using expanded ticker list for more reliable data: {unique_tickers}")
+        # Combined DataFrame for all tickers
+        combined_data = pd.DataFrame()
+        data_source = "multiple_sources"
         
-        # Download data with retries
-        max_retries = 5  # Increased from 3 to 5
-        retry_delay = 1  # seconds
-        data = pd.DataFrame()
-        
-        # Try Yahoo Finance first
-        yahoo_success = False
-        for attempt in range(max_retries):
+        # Get crypto data if needed
+        if crypto_tickers:
+            print("Getting crypto data from CoinMarketCap...")
             try:
-                print(f"Downloading market data from Yahoo Finance (attempt {attempt+1}/{max_retries})...")
-                # First try batch download
-                try:
-                    data = yf.download(unique_tickers, start=start_date, end=end_date, progress=False)['Adj Close']
-                except KeyError as e:
-                    if str(e) == "'Adj Close'":
-                        print("Adj Close not available, falling back to Close prices")
-                        data = yf.download(unique_tickers, start=start_date, end=end_date, progress=False)['Close']
-                    else:
-                        raise e
-                
-                # If data is empty, try downloading one by one
-                if data.empty:
-                    print("Batch download failed, trying individual downloads...")
-                    data = pd.DataFrame(index=pd.date_range(start=start_date, end=end_date))
-                    
-                    for ticker in unique_tickers:
-                        try:
-                            ticker_data = yf.download(ticker, start=start_date, end=end_date, progress=False)
-                            if not ticker_data.empty:
-                                if 'Adj Close' in ticker_data.columns:
-                                    data[ticker] = ticker_data['Adj Close']
-                                else:
-                                    data[ticker] = ticker_data['Close']
-                                print(f"Downloaded data for {ticker}")
-                            else:
-                                print(f"No data available for {ticker}")
-                        except Exception as ticker_e:
-                            print(f"Error downloading {ticker}: {str(ticker_e)}")
-                
-                # Check if we got any data
-                if not data.empty and len(data.columns) > 0:
-                    yahoo_success = True
-                    break
-                
-                # No data yet, retry
-                if attempt < max_retries - 1:
-                    print(f"No data downloaded. Retrying {attempt + 1}/{max_retries}...")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff
+                crypto_data = crypto_service.get_crypto_price_history(crypto_tickers, start_date, end_date)
+                if not crypto_data.empty:
+                    print(f"Got data for {len(crypto_data.columns)} crypto tickers")
+                    combined_data = crypto_data
+                    data_source = "coinmarketcap"
                 else:
-                    print("All Yahoo Finance attempts failed")
-            
+                    print("No crypto data available, will try Yahoo Finance as fallback")
             except Exception as e:
-                print(f"Error downloading data from Yahoo Finance: {str(e)}")
-                if attempt < max_retries - 1:
-                    print(f"Retrying {attempt + 1}/{max_retries}...")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff
-                else:
-                    print("All Yahoo Finance attempts failed")
+                print(f"Error getting crypto data: {str(e)}")
+                print("Will try Yahoo Finance as fallback for crypto tickers")
         
-        # If Yahoo Finance failed, try alternative data sources
-        if not yahoo_success or data.empty or len(data.columns) == 0:
-            print("Yahoo Finance failed to provide data, trying alternative sources")
+        # Get stock data (and crypto if needed) from Yahoo Finance
+        if stock_tickers or combined_data.empty:
+            # Make crypto tickers more reliable by trying alternative formats
+            fixed_tickers = []
+            for ticker in request.tickers:
+                if ticker.endswith('-USD'):
+                    # Add both formats to increase chances of finding data
+                    fixed_tickers.append(ticker)
+                    fixed_tickers.append(ticker.replace('-USD', '-USDT'))
+                    # Also try BTC format which might work better
+                    if ticker.startswith('BTC'):
+                        fixed_tickers.append('BTC-USD')
+                elif ticker.endswith('-USDT'):
+                    fixed_tickers.append(ticker)
+                    fixed_tickers.append(ticker.replace('-USDT', '-USD'))
+                else:
+                    fixed_tickers.append(ticker)
+                    # For stock tickers, ensure we have the right format
+                    if '-' not in ticker and '.' not in ticker:
+                        # Try adding exchange suffixes for international stocks
+                        if ticker not in ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA']:
+                            fixed_tickers.append(f"{ticker}.US")
+            
+            # Deduplicate tickers while preserving order
+            tickers_set = set()
+            unique_tickers = [t for t in fixed_tickers if not (t in tickers_set or tickers_set.add(t))]
+            print(f"Using expanded ticker list for more reliable data: {unique_tickers}")
+            
+            # Download data with retries
+            max_retries = 5  # Increased from 3 to 5
+            retry_delay = 1  # seconds
+            yahoo_data = pd.DataFrame()
+            
+            # Try Yahoo Finance
+            yahoo_success = False
+            for attempt in range(max_retries):
+                try:
+                    print(f"Downloading market data from Yahoo Finance (attempt {attempt+1}/{max_retries})...")
+                    # First try batch download
+                    try:
+                        yahoo_data = yf.download(unique_tickers, start=start_date, end=end_date, progress=False)['Adj Close']
+                    except KeyError as e:
+                        if str(e) == "'Adj Close'":
+                            print("Adj Close not available, falling back to Close prices")
+                            yahoo_data = yf.download(unique_tickers, start=start_date, end=end_date, progress=False)['Close']
+                        else:
+                            raise e
+                    
+                    # If data is empty, try downloading one by one
+                    if yahoo_data.empty:
+                        print("Batch download failed, trying individual downloads...")
+                        yahoo_data = pd.DataFrame(index=pd.date_range(start=start_date, end=end_date))
+                        
+                        for ticker in unique_tickers:
+                            try:
+                                ticker_data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+                                if not ticker_data.empty:
+                                    if 'Adj Close' in ticker_data.columns:
+                                        yahoo_data[ticker] = ticker_data['Adj Close']
+                                    else:
+                                        yahoo_data[ticker] = ticker_data['Close']
+                                    print(f"Downloaded data for {ticker}")
+                                else:
+                                    print(f"No data available for {ticker}")
+                            except Exception as ticker_e:
+                                print(f"Error downloading {ticker}: {str(ticker_e)}")
+                    
+                    # Check if we got any data
+                    if not yahoo_data.empty and len(yahoo_data.columns) > 0:
+                        yahoo_success = True
+                        if data_source == "multiple_sources":
+                            data_source = "yahoo_finance"
+                        else:
+                            data_source = "coinmarketcap_yahoo"
+                        break
+                    
+                    # No data yet, retry
+                    if attempt < max_retries - 1:
+                        print(f"No data downloaded. Retrying {attempt + 1}/{max_retries}...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                    else:
+                        print("All Yahoo Finance attempts failed")
+                
+                except Exception as e:
+                    print(f"Error downloading data from Yahoo Finance: {str(e)}")
+                    if attempt < max_retries - 1:
+                        print(f"Retrying {attempt + 1}/{max_retries}...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                    else:
+                        print("All Yahoo Finance attempts failed")
+            
+            # If Yahoo returned data, merge with our combined data
+            if yahoo_success and not yahoo_data.empty:
+                if combined_data.empty:
+                    combined_data = yahoo_data
+                else:
+                    # Need to join on index
+                    combined_data = combined_data.join(yahoo_data, how='outer')
+            
+        # If we still don't have data, try alternative sources
+        if combined_data.empty or len(combined_data.columns) == 0:
+            print("Yahoo Finance and CoinMarketCap failed to provide data, trying alternative sources")
+            # Try using the alternative data sources defined elsewhere
             alt_data = get_alternative_stock_data(unique_tickers, start_date, end_date)
             
             if not alt_data.empty and len(alt_data.columns) > 0:
-                data = alt_data
+                combined_data = alt_data
+                data_source = "alternative_sources"
                 print("Successfully got data from alternative sources")
             else:
                 print("Alternative sources also failed, falling back to simple analysis")
                 return await analyze_portfolio_simple(request)
         
         # Check if we have any data to work with
-        if data.empty or len(data.columns) == 0:
+        if combined_data.empty or len(combined_data.columns) == 0:
             print("No data available after all attempts, falling back to simple analysis")
             return await analyze_portfolio_simple(request)
         
@@ -622,11 +668,21 @@ async def analyze_portfolio(request: Portfolio):
         original_ticker_map = {}
         for original in request.tickers:
             # Find the first expanded ticker that has data
-            for expanded in unique_tickers:
-                # More flexible matching - match by prefix or full ticker
-                if (expanded.startswith(original.split('-')[0]) or expanded == original) and expanded in data.columns:
-                    original_ticker_map[original] = expanded
-                    break
+            found = False
+            
+            # Direct match first
+            if original in combined_data.columns:
+                original_ticker_map[original] = original
+                found = True
+            
+            # Then look for prefix matches
+            if not found:
+                for column in combined_data.columns:
+                    # More flexible matching - match by prefix or full ticker
+                    if column.startswith(original.split('-')[0]) or column == original:
+                        original_ticker_map[original] = column
+                        found = True
+                        break
         
         # If we're missing any original tickers, fall back to the simple endpoint
         if len(original_ticker_map) != len(request.tickers):
@@ -634,16 +690,16 @@ async def analyze_portfolio(request: Portfolio):
             return await analyze_portfolio_simple(request)
             
         # Create data with original ticker names
-        original_data = pd.DataFrame(index=data.index)
-        for original, expanded in original_ticker_map.items():
-            original_data[original] = data[expanded]
+        original_data = pd.DataFrame(index=combined_data.index)
+        for original, column in original_ticker_map.items():
+            original_data[original] = combined_data[column]
             
         # Fill missing values
         original_data = original_data.fillna(method='ffill').fillna(method='bfill')
         
         # Add a flag indicating this is real data
         response_metadata = {
-            "data_source": "yahoo_finance" if yahoo_success else "alternative_sources",
+            "data_source": data_source,
             "is_real_data": True,
             "tickers_used": original_ticker_map,
             "data_points": len(original_data),
