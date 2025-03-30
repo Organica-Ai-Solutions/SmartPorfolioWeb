@@ -6,21 +6,17 @@ on:
     branches:
       - master
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
-permissions:
-  contents: write
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Clone repository
         run: |
-          git clone https://x-access-token:${DEPLOY_PAT}@github.com/${GITHUB_REPOSITORY}.git .
+          git clone https://${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git .
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
         env:
-          DEPLOY_PAT: ${{ secrets.DEPLOY_PAT }}
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
 
       - name: Setup Node
         run: |
@@ -39,15 +35,20 @@ jobs:
           npm run build
 
       - name: Deploy
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
         run: |
-          cd frontend/dist
-          git init
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
+          # Create and switch to a new empty branch
+          git checkout --orphan temp_pages
+          git rm -rf .
+          
+          # Copy the built files
+          cp -r frontend/dist/* .
+          touch .nojekyll
+          
+          # Configure git and commit
           git add .
           git commit -m "Deploy to GitHub Pages"
-          git branch -M gh-pages
-          git remote add origin https://x-access-token:${DEPLOY_PAT}@github.com/${GITHUB_REPOSITORY}.git
-          git push -f origin gh-pages
-        env:
-          DEPLOY_PAT: ${{ secrets.DEPLOY_PAT }} 
+          
+          # Force push to gh-pages branch
+          git push -f origin temp_pages:gh-pages 
