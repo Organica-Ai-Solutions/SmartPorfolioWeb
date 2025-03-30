@@ -1,5 +1,6 @@
 name: Deploy to GitHub Pages
 
+# Trigger deployment to test environment configuration
 on:
   push:
     branches:
