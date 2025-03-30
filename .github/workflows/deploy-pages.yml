@@ -7,38 +7,34 @@ on:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
   group: "pages"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: './frontend/package.json'
 
       - name: Install dependencies
         working-directory: ./frontend
-        run: npm ci
-
-      - name: Build
-        working-directory: ./frontend
-        run: npm run build
+        run: |
+          npm ci
+          npm run build
         env:
-          DEPLOY_TARGET: github-pages
           VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL }}
           VITE_POLYGON_API_KEY: ${{ secrets.VITE_POLYGON_API_KEY }}
           VITE_ALPACA_API_KEY: ${{ secrets.VITE_ALPACA_API_KEY }}
@@ -51,22 +47,9 @@ jobs:
           echo "Total size of dist directory:"
           du -sh frontend/dist
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v3
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
-        with:
-          path: frontend/dist
-
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
-    runs-on: ubuntu-latest
-    name: Deploy
-    steps:
       - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v2 
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: frontend/dist
+          branch: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }} 
