@@ -122,6 +122,16 @@ export interface PortfolioAnalysis {
             long_term?: string;
         };
     };
+    metadata?: {
+        data_source: string;
+        is_real_data: boolean;
+        tickers_used: Record<string, string>;
+        data_points: number;
+        date_range?: {
+            start: string;
+            end: string;
+        };
+    };
 }
 
 export interface Order {
