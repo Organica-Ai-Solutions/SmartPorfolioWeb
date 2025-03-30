@@ -8,6 +8,9 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
+      # API Keys
+      - key: POLYGON_API_KEY
+        sync: false
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_SECRET_KEY
@@ -16,5 +19,33 @@ services:
         sync: false
       - key: ALPACA_PAPER_SECRET_KEY
         sync: false
+      - key: COINMARKETCAP_API_KEY
+        sync: false
+      # Database
+      - key: DATABASE_URL
+        sync: false
+      # Security
+      - key: SECRET_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 30
+      # DeepSeek AI
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_URL
+        value: https://api.deepseek.com/v1
+      # Server
       - key: PORT
-        value: 8080 
+        value: 8080
+      - key: HOST
+        value: 0.0.0.0
+      # CORS
+      - key: CORS_ORIGINS
+        value: https://organica-ai-solutions.github.io
+      # Proxy
+      - key: USE_TOR_PROXY
+        value: false 
