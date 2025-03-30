@@ -66,23 +66,25 @@ jobs:
       - name: Deploy
         working-directory: /tmp/build
         run: |
-          # Create a fresh gh-pages branch
-          git checkout --orphan gh-pages
-          git rm -rf .
+          # Create a temporary directory for deployment
+          mkdir -p /tmp/deploy
           
-          # Copy the built files
-          cp -r frontend/dist/* .
+          # Copy only the built files
+          cp -r frontend/dist/* /tmp/deploy/
+          cd /tmp/deploy
           touch .nojekyll
           
-          # Debug: List files to be deployed
-          echo "Files to be deployed:"
-          ls -la
+          # Initialize new git repository for deployment
+          git init
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
           
-          # Configure git and commit
+          # Add and commit files
           git add .
           git commit -m "Deploy to GitHub Pages"
           
-          # Force push to gh-pages branch
-          git push -f origin gh-pages
+          # Push to gh-pages branch
+          git remote add origin https://${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
+          git push -f origin HEAD:gh-pages
         env:
           DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }} 
