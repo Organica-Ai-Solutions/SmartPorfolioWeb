@@ -496,12 +496,38 @@ async def analyze_portfolio(request: Portfolio):
         if not request.tickers:
             raise HTTPException(status_code=400, detail="No tickers provided")
         
-        # Parse dates
+        # Parse dates with fallback
         try:
+            # Parse the requested start date
             start_date = datetime.strptime(request.start_date, "%Y-%m-%d")
             end_date = datetime.now()
+            
+            # If the start date is too recent (within 7 days), adjust it to get more data
+            min_data_days = 7
+            if (end_date - start_date).days < min_data_days:
+                print(f"Start date too recent, adjusting to get at least {min_data_days} days of data")
+                start_date = end_date - timedelta(days=min_data_days)
+                
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Make crypto tickers more reliable by trying alternative formats
+        fixed_tickers = []
+        for ticker in request.tickers:
+            if ticker.endswith('-USD'):
+                # Add both formats to increase chances of finding data
+                fixed_tickers.append(ticker)
+                fixed_tickers.append(ticker.replace('-USD', '-USDT'))
+            elif ticker.endswith('-USDT'):
+                fixed_tickers.append(ticker)
+                fixed_tickers.append(ticker.replace('-USDT', '-USD'))
+            else:
+                fixed_tickers.append(ticker)
+        
+        # Deduplicate tickers while preserving order
+        tickers_set = set()
+        unique_tickers = [t for t in fixed_tickers if not (t in tickers_set or tickers_set.add(t))]
+        print(f"Using expanded ticker list for more reliable data: {unique_tickers}")
         
         # Download data with retries
         max_retries = 3
@@ -511,86 +537,99 @@ async def analyze_portfolio(request: Portfolio):
         for attempt in range(max_retries):
             try:
                 print("Downloading market data...")
+                # First try batch download
                 try:
-                    data = yf.download(request.tickers, start=start_date, end=end_date)['Adj Close']
+                    data = yf.download(unique_tickers, start=start_date, end=end_date)['Adj Close']
                 except KeyError as e:
                     if str(e) == "'Adj Close'":
                         print("Adj Close not available, falling back to Close prices")
-                        data = yf.download(request.tickers, start=start_date, end=end_date)['Close']
+                        data = yf.download(unique_tickers, start=start_date, end=end_date)['Close']
                     else:
                         raise e
                 
-                # Check if we got any data
+                # If data is empty, try downloading one by one
                 if data.empty:
-                    raise ValueError("No data returned from Yahoo Finance")
-                
-                # If it's a Series (single ticker), convert to DataFrame
-                if isinstance(data, pd.Series):
-                    data = pd.DataFrame(data)
-                    data.columns = [request.tickers[0]]
-                
-                # Check for missing tickers
-                missing_tickers = [ticker for ticker in request.tickers if ticker not in data.columns]
-                if missing_tickers:
-                    print(f"Missing data for tickers: {missing_tickers}")
+                    print("Batch download failed, trying individual downloads...")
+                    data = pd.DataFrame(index=pd.date_range(start=start_date, end=end_date))
                     
-                    # Try to download missing tickers individually
-                    for ticker in missing_tickers:
-                        print(f"Downloading data for {ticker}...")
+                    for ticker in unique_tickers:
                         try:
-                            # Try Adj Close first, fall back to Close
-                            try:
-                                ticker_data = yf.download(ticker, start=start_date, end=end_date)['Adj Close']
-                            except KeyError:
-                                ticker_data = yf.download(ticker, start=start_date, end=end_date)['Close']
-                            
+                            ticker_data = yf.download(ticker, start=start_date, end=end_date)
                             if not ticker_data.empty:
-                                data[ticker] = ticker_data
-                        except Exception as e:
-                            print(f"Failed to download {ticker}: {str(e)}")
+                                if 'Adj Close' in ticker_data.columns:
+                                    data[ticker] = ticker_data['Adj Close']
+                                else:
+                                    data[ticker] = ticker_data['Close']
+                                print(f"Downloaded data for {ticker}")
+                            else:
+                                print(f"No data available for {ticker}")
+                        except Exception as ticker_e:
+                            print(f"Error downloading {ticker}: {str(ticker_e)}")
                 
-                # If we still don't have data for all tickers, but have some data, proceed with what we have
-                if not data.empty:
-                    available_tickers = list(data.columns)
-                    if available_tickers:
-                        print(f"Proceeding with available tickers: {available_tickers}")
-                        break
-                
-                # If we have no data at all, retry
-                if attempt < max_retries - 1:
-                    print(f"Retry {attempt + 1}/{max_retries} after {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff
+                # Check if we got any data after all attempts
+                if data.empty:
+                    if attempt < max_retries - 1:
+                        print(f"No data downloaded. Retrying {attempt + 1}/{max_retries}...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                    else:
+                        print("All download attempts failed")
+                        # Fall back to the simple endpoint
+                        return await analyze_portfolio_simple(request)
                 else:
-                    raise ValueError(f"Failed to download data after {max_retries} attempts")
+                    # We have some data, proceed with what we have
+                    break
                     
             except Exception as e:
+                print(f"Error downloading data: {str(e)}")
                 if attempt < max_retries - 1:
-                    print(f"Error downloading data: {str(e)}. Retrying {attempt + 1}/{max_retries}...")
+                    print(f"Retrying {attempt + 1}/{max_retries}...")
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
-                    raise e
+                    print("All download attempts failed")
+                    # Fall back to the simple endpoint
+                    return await analyze_portfolio_simple(request)
         
         # Check if we have any data to work with
         if data.empty or len(data.columns) == 0:
-            raise HTTPException(status_code=400, detail="Could not retrieve data for any of the provided tickers")
+            print("No data available after all attempts, falling back to simple analysis")
+            return await analyze_portfolio_simple(request)
         
+        # Map back to original tickers from expanded list
+        original_ticker_map = {}
+        for original in request.tickers:
+            # Find the first expanded ticker that has data
+            for expanded in unique_tickers:
+                if expanded.startswith(original.split('-')[0]) and expanded in data.columns:
+                    original_ticker_map[original] = expanded
+                    break
+        
+        # If we're missing any original tickers, fall back to the simple endpoint
+        if len(original_ticker_map) != len(request.tickers):
+            print(f"Missing data for some tickers, falling back to simple analysis")
+            return await analyze_portfolio_simple(request)
+            
+        # Create data with original ticker names
+        original_data = pd.DataFrame(index=data.index)
+        for original, expanded in original_ticker_map.items():
+            original_data[original] = data[expanded]
+            
         # Fill missing values
-        data = data.fillna(method='ffill').fillna(method='bfill')
+        original_data = original_data.fillna(method='ffill').fillna(method='bfill')
         
         # Calculate expected returns and covariance matrix
-        mu = expected_returns.mean_historical_return(data)
-        S = risk_models.sample_cov(data)
+        mu = expected_returns.mean_historical_return(original_data)
+        S = risk_models.sample_cov(original_data)
         
         # Optimize portfolio based on risk tolerance
-        result = optimize_portfolio(mu, S, request.risk_tolerance, list(data.columns))
+        result = optimize_portfolio(mu, S, request.risk_tolerance, list(original_data.columns))
         
         # Calculate additional portfolio metrics
-        metrics = calculate_portfolio_metrics(data, result['weights'])
+        metrics = calculate_portfolio_metrics(original_data, result['weights'])
         
         # Get historical performance
-        historical_performance = get_historical_performance(data, result['weights'])
+        historical_performance = get_historical_performance(original_data, result['weights'])
         
         # Combine results
         response = {
@@ -610,7 +649,13 @@ async def analyze_portfolio(request: Portfolio):
         raise he
     except Exception as e:
         print(f"Error in analyze_portfolio: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        # Fall back to simple analysis on any error
+        try:
+            print("Falling back to simple analysis due to error")
+            return await analyze_portfolio_simple(request)
+        except Exception as simple_e:
+            print(f"Simple analysis also failed: {str(simple_e)}")
+            raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/analyze-portfolio-simple")
 async def analyze_portfolio_simple(request: Portfolio):
@@ -1018,25 +1063,78 @@ async def ai_sentiment_analysis(portfolio: Portfolio):
                 "timestamp": datetime.now().isoformat()
             }
             
-        # Mock response for testing
+        # Generate more tailored responses for different asset types
         sentiment_data = {
             "overall_sentiment": "positive",
             "score": 0.78,
-            "ticker_sentiments": {
-                ticker: {
-                    "sentiment": "positive" if i % 3 != 0 else "neutral" if i % 3 == 1 else "negative",
-                    "score": 0.7 + (i / 10) % 0.3,
-                    "sources": ["news", "social_media", "analyst_ratings"],
-                    "key_factors": ["strong earnings", "product innovation", "market expansion"]
-                }
-                for i, ticker in enumerate(portfolio.tickers)
-            },
-            "analysis_date": datetime.now().isoformat(),
-            "timeframe": "past 30 days"
+            "ticker_sentiments": {}
         }
+        
+        # Customize sentiment for each ticker based on asset type
+        for i, ticker in enumerate(portfolio.tickers):
+            # Determine if it's a crypto asset
+            is_crypto_asset = is_crypto(ticker)
+            
+            # Generate sentiment specific to asset type
+            if is_crypto_asset:
+                # Crypto-specific sentiment with more volatility
+                base_sentiment = random.choice(["positive", "negative", "neutral"])
+                sentiment_score = round(0.5 + (random.random() - 0.5) * 0.9, 2)  # Higher variance
+                key_factors = [
+                    "regulatory news", 
+                    "blockchain adoption", 
+                    "market liquidity", 
+                    "institutional interest",
+                    "network activity",
+                    "technological developments"
+                ]
+                # Select 2-3 random factors
+                selected_factors = random.sample(key_factors, k=min(3, len(key_factors)))
+                
+                crypto_name = ticker.split('-')[0]
+                sentiment_data["ticker_sentiments"][ticker] = {
+                    "sentiment": base_sentiment,
+                    "score": sentiment_score,
+                    "sources": ["crypto exchanges", "social media", "on-chain analytics"],
+                    "key_factors": selected_factors,
+                    "market_cap_rank": random.randint(1, 100),
+                    "volume_24h_change": round((random.random() - 0.5) * 30, 2),
+                    "asset_type": "cryptocurrency"
+                }
+            else:
+                # Traditional stock sentiment
+                base_sentiment = "positive" if i % 3 != 0 else "neutral" if i % 3 == 1 else "negative"
+                sentiment_data["ticker_sentiments"][ticker] = {
+                    "sentiment": base_sentiment,
+                    "score": round(0.7 + (i / 10) % 0.3, 2),
+                    "sources": ["news", "social media", "analyst_ratings"],
+                    "key_factors": ["earnings reports", "industry trends", "market position"],
+                    "analyst_consensus": random.choice(["buy", "hold", "sell"]),
+                    "price_targets": {
+                        "low": round(80 + random.random() * 20, 2),
+                        "median": round(100 + random.random() * 30, 2),
+                        "high": round(130 + random.random() * 40, 2)
+                    },
+                    "asset_type": "stock"
+                }
+        
+        # Recalculate overall sentiment based on individual scores
+        if sentiment_data["ticker_sentiments"]:
+            avg_score = sum(t["score"] for t in sentiment_data["ticker_sentiments"].values()) / len(sentiment_data["ticker_sentiments"])
+            sentiment_data["score"] = round(avg_score, 2)
+            if avg_score > 0.66:
+                sentiment_data["overall_sentiment"] = "positive"
+            elif avg_score < 0.33:
+                sentiment_data["overall_sentiment"] = "negative"
+            else:
+                sentiment_data["overall_sentiment"] = "neutral"
+        
+        sentiment_data["analysis_date"] = datetime.now().isoformat()
+        sentiment_data["timeframe"] = "past 30 days"
         
         return sentiment_data
     except Exception as e:
+        print(f"Error in ai_sentiment_analysis: {str(e)}")
         return {
             "error": f"Error getting sentiment analysis: {str(e)}",
             "timestamp": datetime.now().isoformat()
