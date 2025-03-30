@@ -1,32 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Portfolio, PortfolioAnalysis, PortfolioMetrics } from './types/portfolio'
 import axios from 'axios'
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip as ChartTooltip, Legend, ArcElement, Filler } from 'chart.js'
-import { Line, Pie } from 'react-chartjs-2'
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, ArcElement, Filler } from 'chart.js'
+import { Line } from 'react-chartjs-2'
 import { SparklesCore } from './components/ui/sparkles'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Button } from './components/ui/button'
+import { motion } from 'framer-motion'
 import { TickerSuggestions } from './components/TickerSuggestions'
-import { PortfolioExplanation } from './components/PortfolioExplanation'
-import { Tooltip, TooltipProvider } from "./components/ui/tooltip"
-import { StockAnalysis } from './components/StockAnalysis'
-import { InformationCircleIcon } from "@heroicons/react/24/outline"
+import { TooltipProvider } from "./components/ui/tooltip"
 import Settings, { AlpacaSettings } from './components/Settings'
-import { Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { RebalanceResult } from './types/portfolio'
-import { RebalanceExplanation } from './components/RebalanceExplanation'
 import { AllocationChart } from './components/AllocationChart'
 import { PerformanceChart } from './components/PerformanceChart'
-import { PortfolioSummary } from './components/PortfolioSummary'
-import { AssetMetricsDetail } from './components/AssetMetricsDetail'
 import { HeaderComponent } from './components/HeaderComponent'
 import { HeroComponent } from './components/HeroComponent'
 import { SentimentAnalysis } from './components/SentimentAnalysis'
 import { ChartBarIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
+import { API_URL as BASE_API_URL } from './config'
 
 ChartJS.register(
   ArcElement,
-  ChartTooltip,
+  Tooltip,
   Legend,
   CategoryScale,
   LinearScale,
@@ -36,7 +29,7 @@ ChartJS.register(
 )
 
 // Update the API_URL to use a relative path or environment variable
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001'
+const API_URL = BASE_API_URL
 
 type TimePeriod = '3m' | '6m' | '1y' | '5y' | 'max'
 
@@ -167,156 +160,59 @@ function App() {
 
   const analyzePortfolio = async () => {
     if (!portfolio.tickers || portfolio.tickers.length === 0) {
-      setError("Please add at least one ticker to your portfolio.");
-      return;
+      setError("Please add at least one ticker to your portfolio.")
+      return
     }
 
-    setIsAnalyzing(true);
-    setError('');
-    console.log("Analyzing portfolio with tickers:", portfolio.tickers);
+    setIsAnalyzing(true)
+    setError('')
+    console.log("Analyzing portfolio with tickers:", portfolio.tickers)
     
     try {
-      // Create a default data structure with guaranteed values for all required fields
-      const initialDefaultData: PortfolioAnalysis = {
-        allocations: {},
-        metrics: {
-          expected_return: 0.05, 
-          volatility: 0.1,
-          sharpe_ratio: 0.5,
-          sortino_ratio: 0.6,
-          beta: 1.0,
-          max_drawdown: -0.1,
-          var_95: -0.02,
-          cvar_95: -0.03
-        },
-        asset_metrics: {},
-        discrete_allocation: {},
-        historical_performance: {
-          dates: ["2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-05-01"],
-          portfolio_values: {
-            "2023-01-01": 10000,
-            "2023-02-01": 10050,
-            "2023-03-01": 10100,
-            "2023-04-01": 10150,
-            "2023-05-01": 10200
-          },
-          drawdowns: {
-            "2023-01-01": 0,
-            "2023-02-01": 0,
-            "2023-03-01": 0,
-            "2023-04-01": -0.01,
-            "2023-05-01": -0.02
-          }
-        },
-        market_comparison: {
-          dates: ["2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-05-01"],
-          market_values: [10000, 10150, 10300, 10250, 10380],
-          relative_performance: [0, 0.5, 0.97, 0.49, 1.16]
-        },
-        ai_insights: {
-          explanations: {
-            english: {
-              summary: "This is a placeholder assessment. The portfolio appears balanced.",
-              risk_analysis: "Placeholder risk analysis.",
-              diversification_analysis: "Placeholder diversification analysis.",
-              market_analysis: "Placeholder market analysis."
-            }
-          },
-          recommendations: ["Consider diversifying across more sectors.", "Review allocation of high-volatility assets."]
-        }
-      };
-
-      // Make the API request
-      const response = await fetch(`${API_URL}/analyze-portfolio-simple`, {
-        method: 'POST',
+      console.log('Making API request to:', `${API_URL}/analyze-portfolio`)
+      console.log('Request payload:', portfolio)
+      
+      // Always try to use the real data endpoint
+      const response = await axios.post(`${API_URL}/analyze-portfolio`, portfolio, {
+        timeout: 30000, // Set timeout to 30 seconds for slower data retrieval
         headers: {
           'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          tickers: portfolio.tickers,
-          start_date: portfolio.start_date,
-          risk_tolerance: portfolio.risk_tolerance
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Error Response:', {
-          status: response.status,
-          statusText: response.statusText,
-          body: errorText
-        });
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
-      }
-
-      const text = await response.text();
-      console.log('Raw API Response:', text);
-      
-      try {
-        // Parse the JSON response
-        const data = JSON.parse(text);
-        console.log("Parsed API Response:", data);
-        
-        // Variable we can modify (not a constant)
-        let analysisData = {...initialDefaultData};
-        
-        try {
-          if (data) {
-            // Log the data structure before validation
-            console.log('Data structure before validation:', {
-              hasAllocations: !!data.allocations,
-              hasMetrics: !!data.metrics,
-              hasHistoricalPerformance: !!data.historical_performance,
-              hasMarketComparison: !!data.market_comparison
-            });
-
-            // Validate the response data
-            if (!validatePortfolioData(data)) {
-              console.error('Invalid portfolio data structure:', data);
-              throw new Error('Invalid portfolio data received from server');
-            }
-            
-            // Merge API data with default data to ensure all fields exist
-            analysisData = mergeWithDefaults(data, initialDefaultData);
-            
-            // Log the merged data structure
-            console.log('Merged data structure:', {
-              hasAllocations: !!analysisData.allocations,
-              hasMetrics: !!analysisData.metrics,
-              hasHistoricalPerformance: !!analysisData.historical_performance,
-              hasMarketComparison: !!analysisData.market_comparison
-            });
-
-            // Validate the merged data
-            if (!validatePortfolioData(analysisData)) {
-              console.error('Invalid merged data structure:', analysisData);
-              throw new Error('Invalid portfolio data after processing');
-            }
-            
-            setAnalysis(analysisData);
-            setError('');
-          }
-        } catch (error) {
-          console.error("Error processing response:", error);
-          setError(error instanceof Error ? error.message : "Failed to process portfolio data");
-          // Still use default data so UI doesn't break
-          setAnalysis(initialDefaultData);
-        } finally {
-          setIsAnalyzing(false);
         }
-      } catch (parseError) {
-        console.error("Error parsing API response:", parseError);
-        console.error("Raw response text:", text);
-        setError("Invalid response format from server");
-        setAnalysis(initialDefaultData);
-        setIsAnalyzing(false);
+      })
+      
+      console.log('Raw API response:', response.data)
+      
+      if (!response.data) {
+        throw new Error('Invalid response data')
       }
-    } catch (error) {
-      console.error("Error in portfolio analysis:", error);
-      setError(error instanceof Error ? error.message : "Failed to analyze portfolio. Please try again.");
-      setIsAnalyzing(false);
+
+      // Update the analysis state with the response data
+      setAnalysis(response.data)
+      
+      // Try to get sentiment data
+      try {
+        const sentimentResponse = await axios.post(`${API_URL}/ai-sentiment-analysis`, portfolio)
+        if (sentimentResponse.data) {
+          setSentimentData(sentimentResponse.data)
+        }
+      } catch (sentimentErr) {
+        console.warn("Error getting sentiment analysis:", sentimentErr)
+      }
+
+      setError('')
+      console.log('Portfolio analysis completed successfully')
+      
+    } catch (error: any) {
+      console.error('API Error:', error)
+      console.error('Error response:', error.response?.data)
+      console.error('Error status:', error.response?.status)
+      console.error('Error headers:', error.response?.headers)
+      console.error('Error message:', error.message)
+      setError(error.response?.data?.detail || error.message || 'Failed to analyze portfolio. Please try again.')
+    } finally {
+      setIsAnalyzing(false)
     }
-  };
+  }
 
   // Helper function to fetch AI insights
   const fetchAIInsights = async (baseAnalysis: PortfolioAnalysis) => {
@@ -393,12 +289,12 @@ function App() {
       
       if (savedSettings) {
         try {
-          alpacaSettings = JSON.parse(savedSettings) as AlpacaSettings;
-          console.log('Using Alpaca settings:', {
-            apiKey: alpacaSettings.apiKey ? '****' + alpacaSettings.apiKey.slice(-4) : 'not set',
-            secretKey: alpacaSettings.secretKey ? '****' + alpacaSettings.secretKey.slice(-4) : 'not set',
-            isPaper: alpacaSettings.isPaper
-          });
+        alpacaSettings = JSON.parse(savedSettings) as AlpacaSettings;
+        console.log('Using Alpaca settings:', {
+          apiKey: alpacaSettings.apiKey ? '****' + alpacaSettings.apiKey.slice(-4) : 'not set',
+          secretKey: alpacaSettings.secretKey ? '****' + alpacaSettings.secretKey.slice(-4) : 'not set',
+          isPaper: alpacaSettings.isPaper
+        });
         } catch (parseError) {
           console.error('Error parsing Alpaca settings:', parseError);
           setError('Invalid Alpaca settings. Please reconfigure in Settings.');
@@ -470,79 +366,48 @@ function App() {
     }
   }
 
-  // Initialize chart data
+  // Initialize chart data when analysis changes
   useEffect(() => {
     if (analysis?.allocations && Object.keys(analysis.allocations).length > 0) {
-      try {
-        const labels = Object.keys(analysis.allocations);
-        const data = Object.values(analysis.allocations)
-          .map(value => {
-            const numValue = Number(value) * 100;
-            if (isNaN(numValue) || !isFinite(numValue)) {
-              console.warn('Invalid allocation value:', value);
-              return 0;
-            }
-            return parseFloat(numValue.toFixed(2)); // Round to 2 decimal places
-          });
+      const labels = Object.keys(analysis.allocations)
+      const data = Object.values(analysis.allocations).map(value => {
+        const numValue = Number(value) * 100
+        return isNaN(numValue) || !isFinite(numValue) ? 0 : parseFloat(numValue.toFixed(2))
+      })
 
-        // Validate data before setting chart data
-        if (labels.length !== data.length) {
-          console.error('Mismatch between labels and data length');
-          return; // Don't update chart data if validation fails
-        }
-
-        if (data.some(value => isNaN(value) || !isFinite(value))) {
-          console.error('Invalid numeric values in data');
-          return; // Don't update chart data if any value is invalid
-        }
-
-        const backgroundColors = [
-          'rgba(255, 99, 132, 0.8)',
-          'rgba(54, 162, 235, 0.8)',
-          'rgba(255, 206, 86, 0.8)',
-          'rgba(75, 192, 192, 0.8)',
-          'rgba(153, 102, 255, 0.8)',
-          'rgba(255, 159, 64, 0.8)',
-          'rgba(199, 199, 199, 0.8)',
-          'rgba(83, 102, 255, 0.8)',
-          'rgba(40, 159, 64, 0.8)',
-          'rgba(210, 199, 199, 0.8)',
-        ];
-        const borderColors = backgroundColors.map(color => color.replace('0.8', '1'));
-
-        // Only update chart data if we have valid data
-        if (labels.length > 0 && data.length > 0) {
-          setChartData({
-            labels,
-            datasets: [{
-              data,
-              backgroundColor: backgroundColors.slice(0, labels.length),
-              borderColor: borderColors.slice(0, labels.length),
-              borderWidth: 1
-            }]
-          });
-        }
-      } catch (err) {
-        console.error('Error setting chart data:', err);
-        // Don't reset chart data on error, keep previous state
-      }
+      setChartData({
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: [
+            'rgba(255, 99, 132, 0.8)',
+            'rgba(54, 162, 235, 0.8)',
+            'rgba(255, 206, 86, 0.8)',
+            'rgba(75, 192, 192, 0.8)',
+            'rgba(153, 102, 255, 0.8)',
+          ],
+          borderColor: [
+            'rgba(255, 99, 132, 1)',
+            'rgba(54, 162, 235, 1)',
+            'rgba(255, 206, 86, 1)',
+            'rgba(75, 192, 192, 1)',
+            'rgba(153, 102, 255, 1)',
+          ],
+          borderWidth: 1
+        }]
+      })
     }
-  }, [analysis?.allocations]);
+  }, [analysis?.allocations])
 
   // Handler for period change
   const handlePeriodChange = (period: TimePeriod) => {
-    const newStartDate = getStartDate(period);
-    console.log(`Setting new start date: ${newStartDate} for period: ${period}`);
+    const newStartDate = getStartDate(period)
+    console.log(`Setting new start date: ${newStartDate} for period: ${period}`)
     
     setPortfolio({
       ...portfolio,
       start_date: newStartDate
-    });
-    
-    // Debug after state update
-    setTimeout(() => {
-      console.log("Portfolio after period change:", portfolio);
-    }, 100);
+    })
   }
 
   // Update the prepareChartData function to handle the updated data structure
@@ -875,10 +740,10 @@ function App() {
                     </TabButton>
                   )}
                 </nav>
-              </div>
+                </div>
 
               {activeTab === 'portfolio' && (
-                <div>
+      <div>
                   {/* Portfolio Management Section */}
                   <div className="mb-6">
                     <h2 className="text-2xl font-bold mb-4">Portfolio Management</h2>
@@ -894,157 +759,154 @@ function App() {
                       <div className="flex flex-wrap gap-2">
                         {portfolio.tickers.map(ticker => (
                           <div 
-                            key={ticker}
+                        key={ticker}
                             className="bg-slate-700 px-3 py-1 rounded-full flex items-center gap-2"
                           >
                             <span>{ticker}</span>
-                            <button
-                              onClick={() => removeTicker(ticker)}
+                        <button
+                          onClick={() => removeTicker(ticker)}
                               className="text-slate-400 hover:text-white"
-                            >
+                        >
                               &times;
-                            </button>
+                        </button>
                           </div>
-                        ))}
+                    ))}
                       </div>
-                    </div>
                   </div>
-
-                  {/* Risk Tolerance */}
-                  <div className="mb-4">
-                    <h3 className="text-xl font-semibold mb-2">Risk Tolerance</h3>
-                    <select
-                      value={portfolio.risk_tolerance}
-                      onChange={(e) => setPortfolio({...portfolio, risk_tolerance: e.target.value})}
-                      className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 w-full"
-                    >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                    </select>
-                  </div>
-
-                  {/* Analysis Period */}
-                  <div className="mb-4">
-                    <h3 className="text-xl font-semibold mb-2">Analysis Period</h3>
-                    <select
-                      onChange={(e) => handlePeriodChange(e.target.value as TimePeriod)}
-                      className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 w-full"
-                    >
-                      <option value="3m">3 Months</option>
-                      <option value="6m">6 Months</option>
-                      <option value="1y" selected>1 Year</option>
-                      <option value="5y">5 Years</option>
-                      <option value="max">Max</option>
-                    </select>
-                  </div>
-
-                  {/* Analyze Button */}
-                  <div className="mb-4 flex flex-col md:flex-row gap-4">
-                    {/* Debug info for button state */}
-                    <div className="mb-2 p-2 bg-blue-900/30 rounded-lg text-xs">
-                      <p>Debug: Tickers: {portfolio.tickers.length > 0 ? portfolio.tickers.join(', ') : 'None'}</p>
-                      <p>Start date: {portfolio.start_date || 'Not set'}</p>
-                      <p>Loading: {loading ? 'Yes' : 'No'}</p>
-                      <p>Button should be enabled: {!(loading || portfolio.tickers.length === 0) ? 'Yes' : 'No'}</p>
-                    </div>
-                    
-                    <button
-                      onClick={analyzePortfolio}
-                      disabled={loading || portfolio.tickers.length === 0}
-                      className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isAnalyzing ? 'Analyzing...' : 'Analyze Portfolio'}
-                    </button>
-                    
-                    <button
-                      onClick={rebalancePortfolio}
-                      disabled={!analysis || loading}
-                      className="px-6 py-3 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading ? 'Rebalancing...' : 'Rebalance Portfolio'}
-                    </button>
-                  </div>
-
-                  {/* Error Message */}
-                  {error && (
-                    <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-                      {error}
-                    </div>
-                  )}
                 </div>
+
+                    {/* Risk Tolerance */}
+                    <div className="mb-4">
+                      <h3 className="text-xl font-semibold mb-2">Risk Tolerance</h3>
+                      <select
+                        value={portfolio.risk_tolerance}
+                        onChange={(e) => setPortfolio({...portfolio, risk_tolerance: e.target.value})}
+                        className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 w-full"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                      </select>
+                  </div>
+
+                    {/* Analysis Period */}
+                    <div className="mb-4">
+                      <h3 className="text-xl font-semibold mb-2">Analysis Period</h3>
+                  <select
+                        onChange={(e) => handlePeriodChange(e.target.value as TimePeriod)}
+                        className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 w-full"
+                      >
+                        <option value="3m">3 Months</option>
+                        <option value="6m">6 Months</option>
+                        <option value="1y" selected>1 Year</option>
+                        <option value="5y">5 Years</option>
+                        <option value="max">Max</option>
+                  </select>
+                </div>
+
+                    {/* Analyze Button */}
+                    <div className="mb-4 flex flex-col md:flex-row gap-4">
+                      {/* Debug info for button state */}
+                      <div className="mb-2 p-2 bg-blue-900/30 rounded-lg text-xs">
+                        <p>Debug: Tickers: {portfolio.tickers.length > 0 ? portfolio.tickers.join(', ') : 'None'}</p>
+                        <p>Start date: {portfolio.start_date || 'Not set'}</p>
+                        <p>Loading: {loading ? 'Yes' : 'No'}</p>
+                        <p>Button should be enabled: {!(loading || portfolio.tickers.length === 0) ? 'Yes' : 'No'}</p>
+                      </div>
+                      
+                  <button
+                    onClick={analyzePortfolio}
+                        disabled={loading || portfolio.tickers.length === 0}
+                        className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isAnalyzing ? 'Analyzing...' : 'Analyze Portfolio'}
+                  </button>
+                  
+                  <button
+                    onClick={rebalancePortfolio}
+                        disabled={!analysis || loading}
+                        className="px-6 py-3 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? 'Rebalancing...' : 'Rebalance Portfolio'}
+                  </button>
+                </div>
+
+                    {/* Error Message */}
+                    {error && (
+                      <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                        {error}
+                  </div>
+                )}
+                  </div>
               )}
               {activeTab === 'watchlist' && <WatchlistTab stockData={stockData} />}
-              {activeTab === 'insights' && analysis && (
+              {activeTab === 'insights' && (
                 <div className="mt-8 border-t border-gray-700 pt-6">
                   <h2 className="text-2xl font-bold mb-6">Portfolio Analysis Results</h2>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    {/* Performance Chart - Enhanced with S&P 500 comparison */}
-                    <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-semibold text-blue-400">Performance Comparison</h3>
-                        <div className="flex items-center space-x-4 text-xs">
-                          <div className="flex items-center">
-                            <div className="w-3 h-3 rounded-full bg-purple-500 mr-1"></div>
-                            <span>Your Portfolio</span>
-                          </div>
-                          <div className="flex items-center">
-                            <div className="w-3 h-3 rounded-full bg-blue-500 mr-1"></div>
-                            <span>S&P 500 Index</span>
-                          </div>
-                        </div>
-                      </div>
-                      {chartData && <PerformanceChart data={chartData} />}
-                      <div className="mt-3 text-sm text-slate-400">
-                        <p>This chart compares the performance of your optimized portfolio against the S&P 500 index benchmark.</p>
-                      </div>
+                  {isAnalyzing ? (
+                    <div className="flex justify-center items-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                      <span className="ml-3">Analyzing portfolio...</span>
                     </div>
+                  ) : !analysis ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <p>No analysis data available. Please analyze your portfolio first.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        {/* Performance Chart */}
+                        <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30">
+                          <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-semibold text-blue-400">Performance</h3>
+                          </div>
+                          {chartData && <PerformanceChart data={chartData} />}
+                        </div>
 
-                    {/* Allocation Chart - Add explanation about optimization */}
-                    <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30">
-                      <h3 className="text-xl font-semibold mb-3 text-blue-400">Optimized Asset Allocation</h3>
-                      <AllocationChart allocations={analysis.allocations} />
-                      <div className="mt-3 text-sm text-slate-400">
-                        <p>Our algorithm optimizes your allocation based on risk/reward metrics. The weights are adjusted to favor assets with better risk-adjusted returns while maintaining diversification appropriate for your selected risk profile ({portfolio.risk_tolerance}).</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Portfolio Metrics - Updated with colored status indicators */}
-                  <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30 mb-6">
-                    <h3 className="text-xl font-semibold mb-4 text-blue-400">Portfolio Summary</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                      <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
-                        <div className="flex justify-between mb-1">
-                          <div className="text-slate-400 text-sm">Expected Return</div>
-                          <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                        {/* Allocation Chart */}
+                        <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30">
+                          <h3 className="text-xl font-semibold mb-3 text-blue-400">Asset Allocation</h3>
+                          {analysis.allocations && <AllocationChart allocations={analysis.allocations} />}
                         </div>
-                        <div className="text-xl font-bold text-green-400">{(analysis.metrics.expected_return * 100).toFixed(2)}%</div>
                       </div>
-                      <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
-                        <div className="flex justify-between mb-1">
-                          <div className="text-slate-400 text-sm">Volatility</div>
-                          <div className="h-2 w-2 rounded-full bg-yellow-500"></div>
+
+                      {/* Metrics */}
+                      <div className="bg-[#121a2a] p-6 rounded-xl shadow-lg border border-blue-900/30 mb-6">
+                        <h3 className="text-xl font-semibold mb-4 text-blue-400">Portfolio Metrics</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                          {analysis.metrics && (
+                            <>
+                              <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
+                                <div className="text-slate-400 text-sm">Expected Return</div>
+                                <div className="text-xl font-bold text-green-400">
+                                  {(analysis.metrics.expected_return * 100).toFixed(2)}%
+                                </div>
+                              </div>
+                              <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
+                                <div className="text-slate-400 text-sm">Volatility</div>
+                                <div className="text-xl font-bold text-yellow-400">
+                                  {(analysis.metrics.volatility * 100).toFixed(2)}%
+                                </div>
+                              </div>
+                              <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
+                                <div className="text-slate-400 text-sm">Sharpe Ratio</div>
+                                <div className="text-xl font-bold text-blue-400">
+                                  {analysis.metrics.sharpe_ratio.toFixed(2)}
+                                </div>
+                              </div>
+                              <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
+                                <div className="text-slate-400 text-sm">Max Drawdown</div>
+                                <div className="text-xl font-bold text-red-400">
+                                  {(analysis.metrics.max_drawdown * 100).toFixed(2)}%
+                                </div>
+                              </div>
+                            </>
+                          )}
                         </div>
-                        <div className="text-xl font-bold text-yellow-400">{(analysis.metrics.volatility * 100).toFixed(2)}%</div>
                       </div>
-                      <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
-                        <div className="flex justify-between mb-1">
-                          <div className="text-slate-400 text-sm">Sharpe Ratio</div>
-                          <div className="h-2 w-2 rounded-full bg-blue-500"></div>
-                        </div>
-                        <div className="text-xl font-bold text-blue-400">{analysis.metrics.sharpe_ratio.toFixed(2)}</div>
-                      </div>
-                      <div className="bg-[#0a0a17] p-4 rounded-lg border border-indigo-900/20">
-                        <div className="flex justify-between mb-1">
-                          <div className="text-slate-400 text-sm">Max Drawdown</div>
-                          <div className="h-2 w-2 rounded-full bg-red-500"></div>
-                        </div>
-                        <div className="text-xl font-bold text-red-400">{(analysis.metrics.max_drawdown * 100).toFixed(2)}%</div>
-                      </div>
-                    </div>
-                  </div>
+                    </>
+                  )}
                 </div>
               )}
               {activeTab === 'sentiment' && sentimentData && (
@@ -1056,7 +918,7 @@ function App() {
                       console.log("Selected ticker:", ticker);
                     }}
                   />
-                </div>
+                          </div>
               )}
             </motion.div>
           </div>
