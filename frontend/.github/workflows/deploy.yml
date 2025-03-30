@@ -22,10 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4.1.1
+        uses: actions/checkout@v3
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4.0.1
+        uses: actions/setup-node@v3
         with:
           node-version: '18'
           cache: 'npm'
@@ -37,13 +37,22 @@ jobs:
 
       - name: Build
         working-directory: ./frontend
-        run: NODE_ENV=production npm run build
+        run: npm run build
         env:
           VITE_API_URL: 'https://smartportfolio-backend.onrender.com'
+          DEPLOY_TARGET: 'github-pages'
 
-      - name: Deploy to GitHub Pages
-        uses: JamesIves/github-pages-deploy-action@v4.5.0
+      # Setup Pages
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+
+      # Upload artifact
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
         with:
-          branch: gh-pages
-          folder: frontend/dist
-          clean: true 
+          path: './frontend/dist'
+
+      # Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2 
