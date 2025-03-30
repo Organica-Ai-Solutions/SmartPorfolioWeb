@@ -813,7 +813,7 @@ async def analyze_portfolio(request: Portfolio):
         unique_tickers = list(set(request.tickers))
         
         # Set date range
-        end_date = datetime.now()
+            end_date = datetime.now()
         start_date = end_date - timedelta(days=365)  # 1 year of data
         
         # Retry parameters
@@ -836,7 +836,7 @@ async def analyze_portfolio(request: Portfolio):
                     # Single ticker case
                     if "Adj Close" in yahoo_data.columns:
                         yahoo_data = yahoo_data["Adj Close"]
-                    else:
+        else:
                         yahoo_data = yahoo_data["Close"]
                     yahoo_data = pd.DataFrame(yahoo_data)  # Convert Series to DataFrame
                     yahoo_success = True
@@ -996,7 +996,7 @@ async def analyze_portfolio(request: Portfolio):
             return await analyze_portfolio_simple(request)
         except Exception as simple_e:
             print(f"Simple analysis also failed: {str(simple_e)}")
-            raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/analyze-portfolio-simple")
@@ -1038,13 +1038,13 @@ async def analyze_portfolio_simple(request: Portfolio):
         
         # Generate mock portfolio weights based on risk tolerance
         total_weight = 1.0
-        weights = []
+                weights = []
         remaining_tickers = len(request.tickers)
         
         for ticker in request.tickers[:-1]:
             # Allocate a portion of the remaining weight
             weight = total_weight * (1 - request.risk_tolerance) / remaining_tickers
-            weights.append(weight)
+                    weights.append(weight)
             total_weight -= weight
             remaining_tickers -= 1
         
@@ -1192,13 +1192,13 @@ async def rebalance_portfolio(allocation: RebalanceRequest):
                         side = OrderSide.BUY if difference > 0 else OrderSide.SELL
                         
                         # Use notional for fractional shares
-                        order_data = MarketOrderRequest(
-                            symbol=symbol,
+                    order_data = MarketOrderRequest(
+                        symbol=symbol,
                             notional=abs(difference),  # Use dollar amount instead of shares
-                            side=side,
-                            time_in_force=TimeInForce.DAY
-                        )
-                        
+                        side=side,
+                        time_in_force=TimeInForce.DAY
+                    )
+                    
                         order = trading_client.submit_order(order_data)
                         trades.append({
                             "symbol": symbol,
@@ -1210,10 +1210,10 @@ async def rebalance_portfolio(allocation: RebalanceRequest):
                             "status": order.status
                         })
                         logger.info(f"Placed {side.value} order for ${abs(difference):.2f} of {symbol} ({shares:.6f} shares)")
-            except Exception as e:
+                    except Exception as e:
                 logger.error(f"Error processing stock order for {symbol}: {str(e)}")
                 trades.append({
-                    "symbol": symbol,
+                            "symbol": symbol,
                     "error": str(e),
                     "type": "stock",
                     "status": "failed"
@@ -1261,7 +1261,7 @@ async def rebalance_portfolio(allocation: RebalanceRequest):
                             "status": order.status
                         })
                         logger.info(f"Placed {side.value} order for ${abs(difference):.2f} of {symbol} ({qty:.8f} units)")
-            except Exception as e:
+    except Exception as e:
                 logger.error(f"Error processing crypto order for {symbol}: {str(e)}")
                 trades.append({
                     "symbol": symbol,

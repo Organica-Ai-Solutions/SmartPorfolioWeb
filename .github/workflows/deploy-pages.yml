@@ -10,52 +10,31 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Clone repository
-        run: |
-          # Debug: Print environment info
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Ref: $GITHUB_REF"
-          
-          # Create and move to a clean directory
-          mkdir -p /tmp/build
-          cd /tmp/build
-          
-          # Clone the repository and fetch all branches
-          git clone --branch master https://${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git .
-          git fetch origin
-          
-          # Debug: List directories
-          echo "Current directory contents:"
-          ls -la
-          
-          # Verify clone was successful
-          if [ ! -d "frontend" ]; then
-            echo "Error: frontend directory not found after clone"
-            pwd
-            exit 1
-          fi
-          
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-        env:
-          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Setup Node
-        working-directory: /tmp/build
-        run: |
-          curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-          sudo apt-get install -y nodejs
-          node --version
-          npm --version
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
 
-      - name: Build Frontend
-        working-directory: /tmp/build/frontend
+      - name: Create and setup frontend
         run: |
-          # Debug: Print directory contents
-          echo "Frontend directory contents:"
-          ls -la
+          # Create frontend directory
+          mkdir -p frontend
+          cd frontend
           
-          npm ci
+          # Initialize a new Vue.js project
+          npm init vite@latest . -- --template vue-ts
+          npm install
+          
+          # Install additional dependencies
+          npm install @headlessui/vue @heroicons/vue @tailwindcss/forms axios chart.js vue-chartjs @vueuse/core
+          
+          # Copy frontend files from repository
+          cp -r $GITHUB_WORKSPACE/frontend/* ./ || true
+          
+          # Build the project
           npm run build
         env:
           VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL }}
@@ -63,28 +42,9 @@ jobs:
           VITE_ALPACA_API_KEY: ${{ secrets.VITE_ALPACA_API_KEY }}
           VITE_ALPACA_SECRET_KEY: ${{ secrets.VITE_ALPACA_SECRET_KEY }}
 
-      - name: Deploy
-        working-directory: /tmp/build
-        run: |
-          # Create a temporary directory for deployment
-          mkdir -p /tmp/deploy
-          
-          # Copy only the built files
-          cp -r frontend/dist/* /tmp/deploy/
-          cd /tmp/deploy
-          touch .nojekyll
-          
-          # Initialize new git repository for deployment
-          git init
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-          
-          # Add and commit files
-          git add .
-          git commit -m "Deploy to GitHub Pages"
-          
-          # Push to gh-pages branch
-          git remote add origin https://${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
-          git push -f origin HEAD:gh-pages
-        env:
-          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }} 
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./frontend/dist
+          force_orphan: true 
