@@ -22,6 +22,9 @@ import math
 import json
 import logging
 import random
+import requests
+import pandas_datareader as pdr
+from pandas_datareader import data as web
 
 # Load environment variables
 load_dotenv()
@@ -502,8 +505,8 @@ async def analyze_portfolio(request: Portfolio):
             start_date = datetime.strptime(request.start_date, "%Y-%m-%d")
             end_date = datetime.now()
             
-            # If the start date is too recent (within 7 days), adjust it to get more data
-            min_data_days = 7
+            # If the start date is too recent (within 30 days), adjust it to get more data
+            min_data_days = 30  # Increased from 7 to 30 for better historical data
             if (end_date - start_date).days < min_data_days:
                 print(f"Start date too recent, adjusting to get at least {min_data_days} days of data")
                 start_date = end_date - timedelta(days=min_data_days)
@@ -518,11 +521,19 @@ async def analyze_portfolio(request: Portfolio):
                 # Add both formats to increase chances of finding data
                 fixed_tickers.append(ticker)
                 fixed_tickers.append(ticker.replace('-USD', '-USDT'))
+                # Also try BTC format which might work better
+                if ticker.startswith('BTC'):
+                    fixed_tickers.append('BTC-USD')
             elif ticker.endswith('-USDT'):
                 fixed_tickers.append(ticker)
                 fixed_tickers.append(ticker.replace('-USDT', '-USD'))
             else:
                 fixed_tickers.append(ticker)
+                # For stock tickers, ensure we have the right format
+                if '-' not in ticker and '.' not in ticker:
+                    # Try adding exchange suffixes for international stocks
+                    if ticker not in ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA']:
+                        fixed_tickers.append(f"{ticker}.US")
         
         # Deduplicate tickers while preserving order
         tickers_set = set()
@@ -530,20 +541,22 @@ async def analyze_portfolio(request: Portfolio):
         print(f"Using expanded ticker list for more reliable data: {unique_tickers}")
         
         # Download data with retries
-        max_retries = 3
+        max_retries = 5  # Increased from 3 to 5
         retry_delay = 1  # seconds
         data = pd.DataFrame()
         
+        # Try Yahoo Finance first
+        yahoo_success = False
         for attempt in range(max_retries):
             try:
-                print("Downloading market data...")
+                print(f"Downloading market data from Yahoo Finance (attempt {attempt+1}/{max_retries})...")
                 # First try batch download
                 try:
-                    data = yf.download(unique_tickers, start=start_date, end=end_date)['Adj Close']
+                    data = yf.download(unique_tickers, start=start_date, end=end_date, progress=False)['Adj Close']
                 except KeyError as e:
                     if str(e) == "'Adj Close'":
                         print("Adj Close not available, falling back to Close prices")
-                        data = yf.download(unique_tickers, start=start_date, end=end_date)['Close']
+                        data = yf.download(unique_tickers, start=start_date, end=end_date, progress=False)['Close']
                     else:
                         raise e
                 
@@ -554,7 +567,7 @@ async def analyze_portfolio(request: Portfolio):
                     
                     for ticker in unique_tickers:
                         try:
-                            ticker_data = yf.download(ticker, start=start_date, end=end_date)
+                            ticker_data = yf.download(ticker, start=start_date, end=end_date, progress=False)
                             if not ticker_data.empty:
                                 if 'Adj Close' in ticker_data.columns:
                                     data[ticker] = ticker_data['Adj Close']
@@ -566,30 +579,39 @@ async def analyze_portfolio(request: Portfolio):
                         except Exception as ticker_e:
                             print(f"Error downloading {ticker}: {str(ticker_e)}")
                 
-                # Check if we got any data after all attempts
-                if data.empty:
-                    if attempt < max_retries - 1:
-                        print(f"No data downloaded. Retrying {attempt + 1}/{max_retries}...")
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # Exponential backoff
-                    else:
-                        print("All download attempts failed")
-                        # Fall back to the simple endpoint
-                        return await analyze_portfolio_simple(request)
-                else:
-                    # We have some data, proceed with what we have
+                # Check if we got any data
+                if not data.empty and len(data.columns) > 0:
+                    yahoo_success = True
                     break
-                    
+                
+                # No data yet, retry
+                if attempt < max_retries - 1:
+                    print(f"No data downloaded. Retrying {attempt + 1}/{max_retries}...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    print("All Yahoo Finance attempts failed")
+            
             except Exception as e:
-                print(f"Error downloading data: {str(e)}")
+                print(f"Error downloading data from Yahoo Finance: {str(e)}")
                 if attempt < max_retries - 1:
                     print(f"Retrying {attempt + 1}/{max_retries}...")
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
-                    print("All download attempts failed")
-                    # Fall back to the simple endpoint
-                    return await analyze_portfolio_simple(request)
+                    print("All Yahoo Finance attempts failed")
+        
+        # If Yahoo Finance failed, try alternative data sources
+        if not yahoo_success or data.empty or len(data.columns) == 0:
+            print("Yahoo Finance failed to provide data, trying alternative sources")
+            alt_data = get_alternative_stock_data(unique_tickers, start_date, end_date)
+            
+            if not alt_data.empty and len(alt_data.columns) > 0:
+                data = alt_data
+                print("Successfully got data from alternative sources")
+            else:
+                print("Alternative sources also failed, falling back to simple analysis")
+                return await analyze_portfolio_simple(request)
         
         # Check if we have any data to work with
         if data.empty or len(data.columns) == 0:
@@ -601,7 +623,8 @@ async def analyze_portfolio(request: Portfolio):
         for original in request.tickers:
             # Find the first expanded ticker that has data
             for expanded in unique_tickers:
-                if expanded.startswith(original.split('-')[0]) and expanded in data.columns:
+                # More flexible matching - match by prefix or full ticker
+                if (expanded.startswith(original.split('-')[0]) or expanded == original) and expanded in data.columns:
                     original_ticker_map[original] = expanded
                     break
         
@@ -617,6 +640,18 @@ async def analyze_portfolio(request: Portfolio):
             
         # Fill missing values
         original_data = original_data.fillna(method='ffill').fillna(method='bfill')
+        
+        # Add a flag indicating this is real data
+        response_metadata = {
+            "data_source": "yahoo_finance" if yahoo_success else "alternative_sources",
+            "is_real_data": True,
+            "tickers_used": original_ticker_map,
+            "data_points": len(original_data),
+            "date_range": {
+                "start": start_date.strftime("%Y-%m-%d"),
+                "end": end_date.strftime("%Y-%m-%d")
+            }
+        }
         
         # Calculate expected returns and covariance matrix
         mu = expected_returns.mean_historical_return(original_data)
@@ -637,7 +672,8 @@ async def analyze_portfolio(request: Portfolio):
             "metrics": metrics['portfolio_metrics'],
             "asset_metrics": metrics['asset_metrics'],
             "discrete_allocation": result['discrete_allocation'],
-            "historical_performance": historical_performance
+            "historical_performance": historical_performance,
+            "metadata": response_metadata  # Add metadata to indicate real data
         }
         
         # Clean numeric values to ensure JSON serialization works
@@ -1212,6 +1248,78 @@ async def ai_rebalance_explanation(allocation: PortfolioAllocation):
     except Exception as e:
         print(f"Error in AI rebalance explanation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error in AI rebalance explanation: {str(e)}")
+
+# Add this function for alternative data source
+def get_alternative_stock_data(tickers, start_date, end_date):
+    """Get stock data from alternative sources if Yahoo Finance fails."""
+    print("Trying alternative data sources...")
+    data = pd.DataFrame()
+    
+    for ticker in tickers:
+        try:
+            # Try AlphaVantage (limited to 5 calls per minute, 500 per day)
+            print(f"Trying AlphaVantage for {ticker}...")
+            try:
+                # Use pandas_datareader with AlphaVantage
+                ticker_data = web.DataReader(ticker, 'av-daily', 
+                                          start=start_date, 
+                                          end=end_date,
+                                          api_key=os.getenv("ALPHAVANTAGE_API_KEY", "demo"))
+                
+                if not ticker_data.empty:
+                    # AlphaVantage data has 'close' column
+                    data[ticker] = ticker_data['close']
+                    print(f"Got data for {ticker} from AlphaVantage")
+                    continue  # Move to next ticker
+            except Exception as e:
+                print(f"AlphaVantage failed for {ticker}: {str(e)}")
+                
+            # Try FRED for common economic indicators
+            if ticker in ['GDPC1', 'DGS10', 'UNRATE', 'CPIAUCSL', 'VIXCLS']:
+                print(f"Trying FRED for {ticker}...")
+                try:
+                    ticker_data = web.DataReader(ticker, 'fred', 
+                                              start=start_date, 
+                                              end=end_date)
+                    if not ticker_data.empty:
+                        data[ticker] = ticker_data[ticker]
+                        print(f"Got data for {ticker} from FRED")
+                        continue  # Move to next ticker
+                except Exception as e:
+                    print(f"FRED failed for {ticker}: {str(e)}")
+            
+            # Try Stooq as another alternative
+            print(f"Trying Stooq for {ticker}...")
+            try:
+                ticker_data = web.DataReader(ticker, 'stooq', 
+                                          start=start_date, 
+                                          end=end_date)
+                if not ticker_data.empty:
+                    data[ticker] = ticker_data['Close']
+                    print(f"Got data for {ticker} from Stooq")
+                    continue  # Move to next ticker
+            except Exception as e:
+                print(f"Stooq failed for {ticker}: {str(e)}")
+                
+            # Try Tiingo as a last resort (requires API key)
+            if os.getenv("TIINGO_API_KEY"):
+                print(f"Trying Tiingo for {ticker}...")
+                try:
+                    ticker_data = web.DataReader(ticker, 'tiingo', 
+                                              start=start_date, 
+                                              end=end_date,
+                                              api_key=os.getenv("TIINGO_API_KEY"))
+                    if not ticker_data.empty:
+                        data[ticker] = ticker_data['close']
+                        print(f"Got data for {ticker} from Tiingo")
+                        continue  # Move to next ticker
+                except Exception as e:
+                    print(f"Tiingo failed for {ticker}: {str(e)}")
+        
+        except Exception as e:
+            print(f"All alternative sources failed for {ticker}: {str(e)}")
+    
+    return data
 
 if __name__ == "__main__":
     import uvicorn
