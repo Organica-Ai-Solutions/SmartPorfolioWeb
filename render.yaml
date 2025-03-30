@@ -4,9 +4,10 @@ services:
   - type: web
     name: smartportfolio-backend
     env: docker
-    dockerfilePath: Dockerfile
-    rootDir: backend
+    region: oregon
     plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
       # API Keys (to be set in Render dashboard)
@@ -33,7 +34,7 @@ services:
       - key: ENCRYPTION_KEY
         sync: false
       - key: ALGORITHM
-        value: "HS256"
+        value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "30"
       
@@ -41,7 +42,7 @@ services:
       - key: DEEPSEEK_API_KEY
         sync: false
       - key: DEEPSEEK_API_URL
-        value: "https://api.deepseek.com/v1"
+        value: https://api.deepseek.com/v1
       
       # Server Configuration
       - key: PORT
@@ -51,11 +52,11 @@ services:
       
       # CORS Configuration
       - key: CORS_ORIGINS
-        value: "https://organica-ai-solutions.github.io"
+        value: https://organica-ai-solutions.github.io
       
       # Proxy Configuration
       - key: SOCKS_PROXY_HOST
-        value: "localhost"
+        value: localhost
       - key: SOCKS_PROXY_PORT
         value: "9050"
       - key: USE_TOR_PROXY
