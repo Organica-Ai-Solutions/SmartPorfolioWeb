@@ -1,5 +1,6 @@
+name: SmartPortfolio
 services:
-  # Backend service only
+  # Backend service
   - type: web
     name: smartportfolio-backend
     env: docker
@@ -8,20 +9,9 @@ services:
     plan: free
     healthCheckPath: /health
     envVars:
-      - key: DEEPSEEK_API_KEY
+      # API Keys (to be set in Render dashboard)
+      - key: POLYGON_API_KEY
         sync: false
-      - key: DEEPSEEK_API_URL
-        value: https://api.deepseek.com/v1
-      - key: ENCRYPTION_KEY
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: USE_TOR_PROXY
-        value: "false"
-      - key: CORS_ORIGINS
-        value: "https://organica-ai-solutions.github.io"
-      - key: PORT
-        value: "8080"
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_SECRET_KEY
@@ -29,4 +19,58 @@ services:
       - key: ALPACA_PAPER_API_KEY
         sync: false
       - key: ALPACA_PAPER_SECRET_KEY
-        sync: false 
+        sync: false
+      - key: COINMARKETCAP_API_KEY
+        sync: false
+      
+      # Database Configuration
+      - key: DATABASE_URL
+        sync: false
+      
+      # Security
+      - key: SECRET_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ALGORITHM
+        value: "HS256"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      
+      # DeepSeek AI Configuration
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_URL
+        value: "https://api.deepseek.com/v1"
+      
+      # Server Configuration
+      - key: PORT
+        value: "8080"
+      - key: HOST
+        value: "0.0.0.0"
+      
+      # CORS Configuration
+      - key: CORS_ORIGINS
+        value: "https://organica-ai-solutions.github.io"
+      
+      # Proxy Configuration
+      - key: SOCKS_PROXY_HOST
+        value: "localhost"
+      - key: SOCKS_PROXY_PORT
+        value: "9050"
+      - key: USE_TOR_PROXY
+        value: "false"
+    
+    # Build and start commands
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    
+    # Auto-deploy settings
+    autoDeploy: true
+    
+    # Instance size
+    instanceType: basic
+    
+    # Network settings
+    domains:
+      - smartportfolio-backend.onrender.com 
