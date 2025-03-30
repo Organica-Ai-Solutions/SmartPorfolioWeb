@@ -42,12 +42,20 @@ jobs:
           VITE_ALPACA_API_KEY: ${{ secrets.VITE_ALPACA_API_KEY }}
           VITE_ALPACA_SECRET_KEY: ${{ secrets.VITE_ALPACA_SECRET_KEY }}
 
+      - name: Debug build output
+        run: |
+          echo "Contents of frontend/dist:"
+          ls -la frontend/dist
+          echo "Total size of dist directory:"
+          du -sh frontend/dist
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: github-pages
           path: frontend/dist
-          if-no-files-found: error
 
   deploy:
     needs: build
@@ -55,6 +63,9 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
