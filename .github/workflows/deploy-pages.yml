@@ -22,28 +22,31 @@ jobs:
         run: |
           curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
           sudo apt-get install -y nodejs
+          node --version
+          npm --version
 
-      - name: Build
-        working-directory: frontend
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
         env:
           VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL }}
           VITE_POLYGON_API_KEY: ${{ secrets.VITE_POLYGON_API_KEY }}
           VITE_ALPACA_API_KEY: ${{ secrets.VITE_ALPACA_API_KEY }}
           VITE_ALPACA_SECRET_KEY: ${{ secrets.VITE_ALPACA_SECRET_KEY }}
-        run: |
-          npm ci
-          npm run build
 
-      - name: Deploy
-        env:
-          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+      - name: Prepare deployment
         run: |
-          # Create and switch to a new empty branch
-          git checkout --orphan temp_pages
+          # Save the built files
+          mv frontend/dist /tmp/dist
+          
+          # Create a fresh gh-pages branch
+          git checkout --orphan gh-pages
           git rm -rf .
           
           # Copy the built files
-          cp -r frontend/dist/* .
+          cp -r /tmp/dist/* .
           touch .nojekyll
           
           # Configure git and commit
@@ -51,4 +54,4 @@ jobs:
           git commit -m "Deploy to GitHub Pages"
           
           # Force push to gh-pages branch
-          git push -f origin temp_pages:gh-pages 
+          git push -f origin gh-pages 
