@@ -12,16 +12,26 @@ jobs:
     steps:
       - name: Clone repository
         run: |
+          # Debug: Print environment info
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Ref: $GITHUB_REF"
+          
           # Create and move to a clean directory
           mkdir -p /tmp/build
           cd /tmp/build
           
-          # Clone the repository
-          git clone https://${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git .
+          # Clone the repository and fetch all branches
+          git clone --branch master https://${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git .
+          git fetch origin
+          
+          # Debug: List directories
+          echo "Current directory contents:"
+          ls -la
           
           # Verify clone was successful
           if [ ! -d "frontend" ]; then
             echo "Error: frontend directory not found after clone"
+            pwd
             exit 1
           fi
           
@@ -41,6 +51,10 @@ jobs:
       - name: Build Frontend
         working-directory: /tmp/build/frontend
         run: |
+          # Debug: Print directory contents
+          echo "Frontend directory contents:"
+          ls -la
+          
           npm ci
           npm run build
         env:
@@ -60,9 +74,15 @@ jobs:
           cp -r frontend/dist/* .
           touch .nojekyll
           
+          # Debug: List files to be deployed
+          echo "Files to be deployed:"
+          ls -la
+          
           # Configure git and commit
           git add .
           git commit -m "Deploy to GitHub Pages"
           
           # Force push to gh-pages branch
-          git push -f origin gh-pages 
+          git push -f origin gh-pages
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }} 
