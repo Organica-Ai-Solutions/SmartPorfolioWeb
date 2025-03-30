@@ -1,22 +1,36 @@
 name: Deploy to GitHub Pages
 
-# Trigger deployment to test environment configuration
 on:
   push:
     branches:
       - master
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout
+        run: |
+          git clone https://${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git .
+          git checkout ${GITHUB_REF#refs/heads/}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
+      - name: Setup Node
+        run: |
+          curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+          node --version
+          npm --version
 
       - name: Create and setup frontend
         run: |
@@ -24,15 +38,158 @@ jobs:
           mkdir -p frontend
           cd frontend
           
-          # Initialize a new Vue.js project
-          npm init vite@latest . -- --template vue-ts
+          # Initialize package.json
+          echo '{
+            "name": "smartportfolio-frontend",
+            "private": true,
+            "version": "0.0.1",
+            "type": "module",
+            "scripts": {
+              "dev": "vite",
+              "build": "vue-tsc && vite build",
+              "preview": "vite preview"
+            },
+            "dependencies": {
+              "@headlessui/vue": "^1.7.19",
+              "@heroicons/vue": "^2.1.1",
+              "@tailwindcss/forms": "^0.5.7",
+              "@vueuse/core": "^10.9.0",
+              "axios": "^1.6.7",
+              "chart.js": "^4.4.1",
+              "vue": "^3.4.21",
+              "vue-chartjs": "^5.3.0",
+              "vue-router": "^4.3.0"
+            },
+            "devDependencies": {
+              "@vitejs/plugin-vue": "^5.0.4",
+              "autoprefixer": "^10.4.17",
+              "postcss": "^8.4.35",
+              "tailwindcss": "^3.4.1",
+              "typescript": "^5.4.2",
+              "vite": "^5.1.4",
+              "vue-tsc": "^1.8.27"
+            }
+          }' > package.json
+          
+          # Install dependencies
           npm install
           
-          # Install additional dependencies
-          npm install @headlessui/vue @heroicons/vue @tailwindcss/forms axios chart.js vue-chartjs @vueuse/core
-          
-          # Copy frontend files from repository
-          cp -r $GITHUB_WORKSPACE/frontend/* ./ || true
+          # Copy frontend files from repository if they exist
+          if [ -d "$GITHUB_WORKSPACE/frontend/src" ]; then
+            cp -r $GITHUB_WORKSPACE/frontend/src ./
+          else
+            # Create basic Vue app structure
+            mkdir -p src/components src/views
+            
+            # Create main.ts
+            echo 'import { createApp } from "vue";
+            import App from "./App.vue";
+            import "./index.css";
+            
+            createApp(App).mount("#app");' > src/main.ts
+            
+            # Create App.vue
+            echo '<template>
+              <div class="min-h-screen bg-gray-100">
+                <header class="bg-white shadow">
+                  <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+                    <h1 class="text-3xl font-bold text-gray-900">SmartPortfolio</h1>
+                  </div>
+                </header>
+                <main>
+                  <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+                    <div class="px-4 py-6 sm:px-0">
+                      <div class="border-4 border-dashed border-gray-200 rounded-lg h-96">
+                        <div class="flex items-center justify-center h-full">
+                          <p class="text-gray-500">Welcome to SmartPortfolio</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </main>
+              </div>
+            </template>' > src/App.vue
+            
+            # Create index.css with Tailwind
+            echo '@tailwind base;
+            @tailwind components;
+            @tailwind utilities;' > src/index.css
+            
+            # Create index.html
+            echo '<!DOCTYPE html>
+            <html lang="en">
+              <head>
+                <meta charset="UTF-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                <title>SmartPortfolio</title>
+              </head>
+              <body>
+                <div id="app"></div>
+                <script type="module" src="/src/main.ts"></script>
+              </body>
+            </html>' > index.html
+            
+            # Create Vite config
+            echo 'import { defineConfig } from "vite";
+            import vue from "@vitejs/plugin-vue";
+            
+            export default defineConfig({
+              plugins: [vue()],
+              base: "/SmartPorfolioWeb/"
+            });' > vite.config.ts
+            
+            # Create tsconfig
+            echo '{
+              "compilerOptions": {
+                "target": "ES2020",
+                "useDefineForClassFields": true,
+                "module": "ESNext",
+                "lib": ["ES2020", "DOM", "DOM.Iterable"],
+                "skipLibCheck": true,
+                "moduleResolution": "bundler",
+                "allowImportingTsExtensions": true,
+                "resolveJsonModule": true,
+                "isolatedModules": true,
+                "noEmit": true,
+                "jsx": "preserve",
+                "strict": true,
+                "noUnusedLocals": true,
+                "noUnusedParameters": true,
+                "noFallthroughCasesInSwitch": true
+              },
+              "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+              "references": [{ "path": "./tsconfig.node.json" }]
+            }' > tsconfig.json
+            
+            # Create tsconfig.node.json
+            echo '{
+              "compilerOptions": {
+                "composite": true,
+                "skipLibCheck": true,
+                "module": "ESNext",
+                "moduleResolution": "bundler",
+                "allowSyntheticDefaultImports": true
+              },
+              "include": ["vite.config.ts"]
+            }' > tsconfig.node.json
+            
+            # Create Tailwind config
+            echo 'export default {
+              content: ["./index.html", "./src/**/*.{vue,js,ts,jsx,tsx}"],
+              theme: {
+                extend: {},
+              },
+              plugins: [require("@tailwindcss/forms")],
+            }' > tailwind.config.js
+            
+            # Create PostCSS config
+            echo 'export default {
+              plugins: {
+                tailwindcss: {},
+                autoprefixer: {},
+              },
+            }' > postcss.config.js
+          fi
           
           # Build the project
           npm run build
@@ -42,9 +199,18 @@ jobs:
           VITE_ALPACA_API_KEY: ${{ secrets.VITE_ALPACA_API_KEY }}
           VITE_ALPACA_SECRET_KEY: ${{ secrets.VITE_ALPACA_SECRET_KEY }}
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./frontend/dist
-          force_orphan: true 
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2 
