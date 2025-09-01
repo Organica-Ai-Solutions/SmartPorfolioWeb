@@ -1289,6 +1289,1788 @@ async def rebalance_portfolio(allocation: RebalanceRequest):
         )
 
 
+# Import the new services
+from app.services.dynamic_allocation_service import DynamicAllocationService
+from app.services.advanced_optimization_service import AdvancedOptimizationService, OptimizationMethod, FactorType
+from app.services.risk_management_service import RiskManagementService, RiskRegime, DrawdownSeverity
+from app.services.liquidity_management_service import LiquidityManagementService, MarketCondition, RebalanceFrequency
+from app.services.tax_efficiency_service import TaxEfficiencyService, AccountType, TaxEfficiencyTier
+from app.services.ml_intelligence_service import MLIntelligenceService, PredictionHorizon, ModelType, MarketRegime as MLMarketRegime
+
+# Initialize services
+dynamic_allocation_service = DynamicAllocationService()
+advanced_optimization_service = AdvancedOptimizationService()
+risk_management_service = RiskManagementService()
+liquidity_management_service = LiquidityManagementService()
+tax_efficiency_service = TaxEfficiencyService()
+
+# Initialize ML Intelligence service
+try:
+    ml_intelligence_service = MLIntelligenceService()
+    ML_ENABLED = True
+    logger.info("ML Intelligence service initialized successfully")
+except ImportError as e:
+    logger.warning(f"ML Intelligence service not available: {str(e)}")
+    ml_intelligence_service = None
+    ML_ENABLED = False
+except Exception as e:
+    logger.error(f"Error initializing ML Intelligence service: {str(e)}")
+    ml_intelligence_service = None
+    ML_ENABLED = False
+
+class DynamicAllocationRequest(BaseModel):
+    tickers: List[str]
+    base_allocation: Dict[str, float]
+    risk_tolerance: str = "medium"
+    lookback_days: int = 252
+
+@app.post("/dynamic-allocation")
+async def get_dynamic_allocation(request: DynamicAllocationRequest):
+    """Get dynamic asset allocation based on current market conditions."""
+    try:
+        logger.info(f"Getting dynamic allocation for tickers: {request.tickers}")
+        
+        # Validate base allocation
+        if not request.base_allocation or len(request.base_allocation) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Base allocation must be provided and non-empty"
+            )
+        
+        # Validate that base allocation sums to approximately 1
+        total_weight = sum(request.base_allocation.values())
+        if abs(total_weight - 1.0) > 0.01:  # Allow small rounding errors
+            logger.warning(f"Base allocation sums to {total_weight}, normalizing to 1.0")
+            # Normalize the allocation
+            request.base_allocation = {
+                ticker: weight / total_weight 
+                for ticker, weight in request.base_allocation.items()
+            }
+        
+        # Get dynamic allocation
+        result = await dynamic_allocation_service.get_dynamic_allocation(
+            tickers=request.tickers,
+            base_allocation=request.base_allocation,
+            risk_tolerance=request.risk_tolerance,
+            lookback_days=request.lookback_days
+        )
+        
+        logger.info("Dynamic allocation completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in dynamic allocation: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get dynamic allocation: {str(e)}"
+        )
+
+@app.post("/market-analysis")
+async def get_market_analysis():
+    """Get comprehensive market analysis from all data sources."""
+    try:
+        logger.info("Getting comprehensive market analysis")
+        
+        # Get market data using the dynamic allocation service
+        tickers = ["SPY", "QQQ", "BTC-USD", "GLD", "TLT"]  # Representative tickers
+        market_data = await dynamic_allocation_service._get_comprehensive_market_data(
+            tickers=tickers,
+            lookback_days=252
+        )
+        
+        logger.info("Market analysis completed successfully")
+        return {
+            "market_data": market_data,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in market analysis: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get market analysis: {str(e)}"
+        )
+
+class OptimizedDynamicAllocationRequest(BaseModel):
+    tickers: List[str]
+    risk_tolerance: str = "medium"
+    investment_amount: float = 10000
+    use_dynamic_allocation: bool = True
+    lookback_days: int = 252
+
+@app.post("/analyze-portfolio-enhanced")
+async def analyze_portfolio_enhanced(request: OptimizedDynamicAllocationRequest):
+    """Enhanced portfolio analysis with dynamic allocation and comprehensive market data."""
+    try:
+        logger.info(f"Enhanced portfolio analysis for tickers: {request.tickers}")
+        
+        # First, get the traditional portfolio optimization
+        portfolio_request = Portfolio(
+            tickers=request.tickers,
+            start_date=(datetime.now() - timedelta(days=request.lookback_days)).strftime('%Y-%m-%d'),
+            risk_tolerance=request.risk_tolerance
+        )
+        
+        # Get traditional analysis
+        traditional_analysis = await analyze_portfolio(portfolio_request)
+        
+        if request.use_dynamic_allocation and "allocations" in traditional_analysis:
+            # Apply dynamic allocation
+            dynamic_result = await dynamic_allocation_service.get_dynamic_allocation(
+                tickers=request.tickers,
+                base_allocation=traditional_analysis["allocations"],
+                risk_tolerance=request.risk_tolerance,
+                lookback_days=request.lookback_days
+            )
+            
+            # Combine results
+            enhanced_analysis = {
+                **traditional_analysis,
+                "dynamic_allocation": dynamic_result,
+                "enhanced_allocations": dynamic_result.get("final_allocation", traditional_analysis["allocations"]),
+                "allocation_comparison": {
+                    "traditional": traditional_analysis["allocations"],
+                    "dynamic": dynamic_result.get("final_allocation", traditional_analysis["allocations"])
+                }
+            }
+        else:
+            enhanced_analysis = traditional_analysis
+        
+        logger.info("Enhanced portfolio analysis completed successfully")
+        return enhanced_analysis
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in enhanced portfolio analysis: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to analyze portfolio with enhancements: {str(e)}"
+        )
+
+class AdvancedOptimizationRequest(BaseModel):
+    tickers: List[str]
+    method: str = "black_litterman"  # OptimizationMethod enum as string
+    lookback_days: int = 252
+    risk_tolerance: str = "medium"
+    views: Optional[Dict[str, float]] = None
+    factor_constraints: Optional[Dict[str, List[float]]] = None  # {factor: [min, max]}
+    target_return: Optional[float] = None
+
+@app.post("/optimize-portfolio-advanced")
+async def optimize_portfolio_advanced(request: AdvancedOptimizationRequest):
+    """Advanced portfolio optimization using sophisticated methods."""
+    try:
+        logger.info(f"Advanced optimization for tickers: {request.tickers} using method: {request.method}")
+        
+        # Validate method
+        try:
+            optimization_method = OptimizationMethod(request.method)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid optimization method: {request.method}. Valid methods: {list(OptimizationMethod)}"
+            )
+        
+        # Convert factor constraints if provided
+        factor_constraints = None
+        if request.factor_constraints:
+            factor_constraints = {}
+            for factor_str, bounds in request.factor_constraints.items():
+                try:
+                    factor_type = FactorType(factor_str)
+                    if len(bounds) == 2:
+                        factor_constraints[factor_type] = (bounds[0], bounds[1])
+                except ValueError:
+                    logger.warning(f"Invalid factor type: {factor_str}")
+        
+        # Run advanced optimization
+        result = await advanced_optimization_service.optimize_portfolio_advanced(
+            tickers=request.tickers,
+            method=optimization_method,
+            lookback_days=request.lookback_days,
+            risk_tolerance=request.risk_tolerance,
+            views=request.views,
+            factor_constraints=factor_constraints,
+            target_return=request.target_return
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Optimization failed: {result['error']}"
+            )
+        
+        logger.info("Advanced optimization completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in advanced optimization: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to optimize portfolio: {str(e)}"
+        )
+
+class BlackLittermanRequest(BaseModel):
+    tickers: List[str]
+    views: Dict[str, float]  # {ticker: expected_return}
+    view_confidence: Optional[float] = 0.025  # 2.5% uncertainty
+    lookback_days: int = 252
+    risk_tolerance: str = "medium"
+
+@app.post("/black-litterman-optimization")
+async def black_litterman_optimization(request: BlackLittermanRequest):
+    """Black-Litterman portfolio optimization with investor views."""
+    try:
+        logger.info(f"Black-Litterman optimization with views: {request.views}")
+        
+        result = await advanced_optimization_service.optimize_portfolio_advanced(
+            tickers=request.tickers,
+            method=OptimizationMethod.BLACK_LITTERMAN,
+            lookback_days=request.lookback_days,
+            risk_tolerance=request.risk_tolerance,
+            views=request.views,
+            view_confidence=request.view_confidence
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Black-Litterman optimization failed: {result['error']}"
+            )
+        
+        logger.info("Black-Litterman optimization completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in Black-Litterman optimization: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run Black-Litterman optimization: {str(e)}"
+        )
+
+class FactorBasedRequest(BaseModel):
+    tickers: List[str]
+    factor_constraints: Dict[str, List[float]]  # {factor: [min, max]}
+    lookback_days: int = 252
+    target_factors: Optional[List[str]] = None  # Focus on specific factors
+
+@app.post("/factor-based-optimization")
+async def factor_based_optimization(request: FactorBasedRequest):
+    """Factor-based portfolio optimization with factor constraints."""
+    try:
+        logger.info(f"Factor-based optimization with constraints: {request.factor_constraints}")
+        
+        # Convert factor constraints
+        factor_constraints = {}
+        for factor_str, bounds in request.factor_constraints.items():
+            try:
+                factor_type = FactorType(factor_str)
+                if len(bounds) == 2:
+                    factor_constraints[factor_type] = (bounds[0], bounds[1])
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid factor type: {factor_str}. Valid factors: {list(FactorType)}"
+                )
+        
+        result = await advanced_optimization_service.optimize_portfolio_advanced(
+            tickers=request.tickers,
+            method=OptimizationMethod.FACTOR_BASED,
+            lookback_days=request.lookback_days,
+            factor_constraints=factor_constraints
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Factor-based optimization failed: {result['error']}"
+            )
+        
+        logger.info("Factor-based optimization completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in factor-based optimization: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run factor-based optimization: {str(e)}"
+        )
+
+@app.post("/risk-parity-optimization")
+async def risk_parity_optimization(request: Portfolio):
+    """Risk parity optimization for equal risk contribution."""
+    try:
+        logger.info(f"Risk parity optimization for tickers: {request.tickers}")
+        
+        result = await advanced_optimization_service.optimize_portfolio_advanced(
+            tickers=request.tickers,
+            method=OptimizationMethod.RISK_PARITY,
+            lookback_days=252,
+            risk_tolerance=request.risk_tolerance
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Risk parity optimization failed: {result['error']}"
+            )
+        
+        logger.info("Risk parity optimization completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in risk parity optimization: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run risk parity optimization: {str(e)}"
+        )
+
+@app.post("/minimum-variance-optimization")
+async def minimum_variance_optimization(request: Portfolio):
+    """Minimum variance portfolio optimization."""
+    try:
+        logger.info(f"Minimum variance optimization for tickers: {request.tickers}")
+        
+        result = await advanced_optimization_service.optimize_portfolio_advanced(
+            tickers=request.tickers,
+            method=OptimizationMethod.MIN_VOLATILITY,
+            lookback_days=252,
+            risk_tolerance=request.risk_tolerance
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Minimum variance optimization failed: {result['error']}"
+            )
+        
+        logger.info("Minimum variance optimization completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in minimum variance optimization: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run minimum variance optimization: {str(e)}"
+        )
+
+class OptimizationComparisonRequest(BaseModel):
+    tickers: List[str]
+    methods: List[str] = ["max_sharpe", "min_volatility", "black_litterman", "risk_parity"]
+    lookback_days: int = 252
+    risk_tolerance: str = "medium"
+    views: Optional[Dict[str, float]] = None
+
+@app.post("/compare-optimization-methods")
+async def compare_optimization_methods(request: OptimizationComparisonRequest):
+    """Compare multiple optimization methods side by side."""
+    try:
+        logger.info(f"Comparing optimization methods: {request.methods} for tickers: {request.tickers}")
+        
+        results = {}
+        
+        for method_str in request.methods:
+            try:
+                method = OptimizationMethod(method_str)
+                
+                result = await advanced_optimization_service.optimize_portfolio_advanced(
+                    tickers=request.tickers,
+                    method=method,
+                    lookback_days=request.lookback_days,
+                    risk_tolerance=request.risk_tolerance,
+                    views=request.views if method == OptimizationMethod.BLACK_LITTERMAN else None
+                )
+                
+                if "error" not in result:
+                    results[method_str] = result
+                else:
+                    results[method_str] = {"error": result["error"]}
+                    
+            except ValueError:
+                results[method_str] = {"error": f"Invalid method: {method_str}"}
+            except Exception as e:
+                results[method_str] = {"error": str(e)}
+        
+        # Add comparison summary
+        comparison_summary = {
+            "best_sharpe": None,
+            "lowest_volatility": None,
+            "most_diversified": None,
+            "method_rankings": {}
+        }
+        
+        valid_results = {k: v for k, v in results.items() if "error" not in v}
+        
+        if valid_results:
+            # Find best Sharpe ratio
+            best_sharpe_method = max(
+                valid_results.keys(), 
+                key=lambda x: valid_results[x].get("sharpe_ratio", 0)
+            )
+            comparison_summary["best_sharpe"] = {
+                "method": best_sharpe_method,
+                "sharpe_ratio": valid_results[best_sharpe_method]["sharpe_ratio"]
+            }
+            
+            # Find lowest volatility
+            lowest_vol_method = min(
+                valid_results.keys(), 
+                key=lambda x: valid_results[x].get("volatility", float('inf'))
+            )
+            comparison_summary["lowest_volatility"] = {
+                "method": lowest_vol_method,
+                "volatility": valid_results[lowest_vol_method]["volatility"]
+            }
+            
+            # Calculate diversification scores
+            for method, result in valid_results.items():
+                weights = result.get("weights", {})
+                if weights:
+                    concentration = sum(w**2 for w in weights.values())
+                    diversification_score = 1.0 / concentration
+                    comparison_summary["method_rankings"][method] = {
+                        "diversification_score": diversification_score,
+                        "concentration_ratio": concentration
+                    }
+        
+        logger.info("Optimization method comparison completed successfully")
+        return {
+            "results": results,
+            "comparison_summary": comparison_summary,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in optimization comparison: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to compare optimization methods: {str(e)}"
+        )
+
+class VolatilityPositionSizingRequest(BaseModel):
+    portfolio_weights: Dict[str, float]
+    tickers: List[str]
+    lookback_days: int = 63
+    target_portfolio_vol: float = 0.15
+
+@app.post("/volatility-position-sizing")
+async def volatility_position_sizing(request: VolatilityPositionSizingRequest):
+    """Apply volatility-based position sizing to portfolio."""
+    try:
+        logger.info(f"Applying volatility position sizing for {len(request.tickers)} assets")
+        
+        result = await risk_management_service.apply_volatility_position_sizing(
+            weights=request.portfolio_weights,
+            tickers=request.tickers,
+            lookback_days=request.lookback_days,
+            target_portfolio_vol=request.target_portfolio_vol
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Volatility sizing failed: {result['error']}"
+            )
+        
+        logger.info("Volatility position sizing completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in volatility position sizing: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to apply volatility sizing: {str(e)}"
+        )
+
+class TailRiskHedgingRequest(BaseModel):
+    portfolio_weights: Dict[str, float]
+    risk_regime: str = "moderate_risk"
+    hedge_budget: float = 0.05
+
+@app.post("/tail-risk-hedging")
+async def tail_risk_hedging(request: TailRiskHedgingRequest):
+    """Implement tail risk hedging strategies."""
+    try:
+        logger.info(f"Implementing tail risk hedging for {request.risk_regime} regime")
+        
+        # Validate risk regime
+        try:
+            risk_regime_enum = RiskRegime(request.risk_regime)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid risk regime: {request.risk_regime}. Valid regimes: {list(RiskRegime)}"
+            )
+        
+        result = await risk_management_service.implement_tail_risk_hedging(
+            portfolio_weights=request.portfolio_weights,
+            risk_regime=risk_regime_enum,
+            hedge_budget=request.hedge_budget
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Tail hedging failed: {result['error']}"
+            )
+        
+        logger.info("Tail risk hedging implemented successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in tail risk hedging: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to implement tail hedging: {str(e)}"
+        )
+
+class DrawdownControlRequest(BaseModel):
+    current_weights: Dict[str, float]
+    portfolio_value: float
+    peak_value: float
+    lookback_days: int = 252
+
+@app.post("/drawdown-controls")
+async def drawdown_controls(request: DrawdownControlRequest):
+    """Apply drawdown control mechanisms."""
+    try:
+        logger.info(f"Applying drawdown controls - Current: ${request.portfolio_value:,.0f}, Peak: ${request.peak_value:,.0f}")
+        
+        result = await risk_management_service.apply_drawdown_controls(
+            current_weights=request.current_weights,
+            portfolio_value=request.portfolio_value,
+            peak_value=request.peak_value,
+            lookback_days=request.lookback_days
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Drawdown controls failed: {result['error']}"
+            )
+        
+        logger.info("Drawdown controls applied successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in drawdown controls: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to apply drawdown controls: {str(e)}"
+        )
+
+class ComprehensiveRiskManagementRequest(BaseModel):
+    portfolio_weights: Dict[str, float]
+    tickers: List[str]
+    portfolio_value: float = 100000
+    peak_value: float = 100000
+    target_vol: float = 0.15
+    hedge_budget: float = 0.05
+    lookback_days: int = 63
+
+@app.post("/comprehensive-risk-management")
+async def comprehensive_risk_management(request: ComprehensiveRiskManagementRequest):
+    """Apply comprehensive risk management combining all strategies."""
+    try:
+        logger.info(f"Applying comprehensive risk management for portfolio value: ${request.portfolio_value:,.0f}")
+        
+        result = await risk_management_service.comprehensive_risk_management(
+            portfolio_weights=request.portfolio_weights,
+            tickers=request.tickers,
+            portfolio_value=request.portfolio_value,
+            peak_value=request.peak_value,
+            target_vol=request.target_vol,
+            hedge_budget=request.hedge_budget,
+            lookback_days=request.lookback_days
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Risk management failed: {result['error']}"
+            )
+        
+        logger.info("Comprehensive risk management completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in comprehensive risk management: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to apply risk management: {str(e)}"
+        )
+
+class OptimizedPortfolioWithRiskControlsRequest(BaseModel):
+    tickers: List[str]
+    optimization_method: str = "black_litterman"
+    risk_tolerance: str = "medium"
+    portfolio_value: float = 100000
+    peak_value: float = 100000
+    target_vol: float = 0.15
+    hedge_budget: float = 0.05
+    views: Optional[Dict[str, float]] = None
+    factor_constraints: Optional[Dict[str, List[float]]] = None
+    lookback_days: int = 63
+
+@app.post("/optimize-with-risk-controls")
+async def optimize_with_risk_controls(request: OptimizedPortfolioWithRiskControlsRequest):
+    """Optimize portfolio and apply comprehensive risk controls."""
+    try:
+        logger.info(f"Running optimization with risk controls for {len(request.tickers)} assets")
+        
+        # Step 1: Run portfolio optimization
+        try:
+            optimization_method = OptimizationMethod(request.optimization_method)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid optimization method: {request.optimization_method}"
+            )
+        
+        # Convert factor constraints if provided
+        factor_constraints = None
+        if request.factor_constraints:
+            factor_constraints = {}
+            for factor_str, bounds in request.factor_constraints.items():
+                try:
+                    factor_type = FactorType(factor_str)
+                    if len(bounds) == 2:
+                        factor_constraints[factor_type] = (bounds[0], bounds[1])
+                except ValueError:
+                    logger.warning(f"Invalid factor type: {factor_str}")
+        
+        optimization_result = await advanced_optimization_service.optimize_portfolio_advanced(
+            tickers=request.tickers,
+            method=optimization_method,
+            lookback_days=request.lookback_days,
+            risk_tolerance=request.risk_tolerance,
+            views=request.views,
+            factor_constraints=factor_constraints
+        )
+        
+        if "error" in optimization_result:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Optimization failed: {optimization_result['error']}"
+            )
+        
+        optimized_weights = optimization_result.get("weights", {})
+        
+        # Step 2: Apply comprehensive risk management
+        risk_management_result = await risk_management_service.comprehensive_risk_management(
+            portfolio_weights=optimized_weights,
+            tickers=request.tickers,
+            portfolio_value=request.portfolio_value,
+            peak_value=request.peak_value,
+            target_vol=request.target_vol,
+            hedge_budget=request.hedge_budget,
+            lookback_days=request.lookback_days
+        )
+        
+        if "error" in risk_management_result:
+            logger.warning(f"Risk management had issues: {risk_management_result['error']}")
+            # Continue with optimized weights if risk management fails
+            final_weights = optimized_weights
+            risk_management_result = {"error": risk_management_result["error"]}
+        else:
+            final_weights = risk_management_result.get("final_weights", optimized_weights)
+        
+        # Step 3: Calculate performance comparison
+        optimization_performance = {
+            "expected_return": optimization_result.get("expected_return", 0),
+            "volatility": optimization_result.get("volatility", 0),
+            "sharpe_ratio": optimization_result.get("sharpe_ratio", 0)
+        }
+        
+        # Calculate final portfolio metrics (simplified)
+        weight_changes = {}
+        for ticker in set(list(optimized_weights.keys()) + list(final_weights.keys())):
+            original = optimized_weights.get(ticker, 0)
+            final = final_weights.get(ticker, 0)
+            if abs(final - original) > 0.001:  # Only show significant changes
+                weight_changes[ticker] = {
+                    "original": original,
+                    "final": final,
+                    "change": final - original
+                }
+        
+        logger.info("Portfolio optimization with risk controls completed successfully")
+        
+        return {
+            "final_portfolio": final_weights,
+            "optimization_result": optimization_result,
+            "risk_management": risk_management_result,
+            "performance_comparison": {
+                "optimization_only": optimization_performance,
+                "with_risk_controls": {
+                    "risk_regime": risk_management_result.get("risk_regime"),
+                    "defensive_allocation": risk_management_result.get("summary", {}).get("defensive_allocation", 0),
+                    "hedge_allocation": risk_management_result.get("summary", {}).get("hedge_allocation", 0)
+                }
+            },
+            "weight_changes": weight_changes,
+            "summary": {
+                "optimization_method": request.optimization_method,
+                "risk_controls_applied": "error" not in risk_management_result,
+                "total_adjustments": len(weight_changes),
+                "recommendations": risk_management_result.get("summary", {}).get("recommendations", [])
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in optimization with risk controls: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to optimize with risk controls: {str(e)}"
+        )
+
+@app.get("/risk-management-info")
+async def get_risk_management_info():
+    """Get information about available risk management features."""
+    return {
+        "features": {
+            "volatility_position_sizing": {
+                "description": "Adjusts position sizes based on asset volatility",
+                "parameters": ["target_portfolio_vol", "lookback_days"],
+                "benefits": ["Reduces concentration in volatile assets", "Controls portfolio-level risk"]
+            },
+            "tail_risk_hedging": {
+                "description": "Implements hedging strategies during high-risk periods",
+                "hedge_types": ["VIX protection", "Tail protection ETFs", "Safe haven assets", "Currency hedging"],
+                "risk_regimes": list(RiskRegime)
+            },
+            "drawdown_controls": {
+                "description": "Reduces exposure after losses exceed thresholds",
+                "severity_levels": list(DrawdownSeverity),
+                "actions": ["Risk reduction", "Cash allocation", "Recovery monitoring"]
+            },
+            "comprehensive_management": {
+                "description": "Combines all risk management strategies",
+                "workflow": ["Volatility sizing", "Tail hedging", "Drawdown controls", "Performance monitoring"]
+            }
+        },
+        "risk_regimes": {
+            regime.value: {
+                "description": f"Market risk level: {regime.value.replace('_', ' ').title()}",
+                "hedge_intensity": {
+                    RiskRegime.LOW_RISK: "Minimal hedging",
+                    RiskRegime.MODERATE_RISK: "Standard hedging",
+                    RiskRegime.HIGH_RISK: "Elevated hedging",
+                    RiskRegime.EXTREME_RISK: "Maximum hedging"
+                }.get(regime, "Standard hedging")
+            }
+            for regime in RiskRegime
+        },
+        "default_parameters": {
+            "target_portfolio_vol": 0.15,
+            "hedge_budget": 0.05,
+            "lookback_days": 63,
+            "volatility_thresholds": {
+                "low": "< 15% annual",
+                "medium": "15-25% annual", 
+                "high": "25-40% annual",
+                "extreme": "> 40% annual"
+            }
+        }
+    }
+
+# Liquidity Management Endpoints
+
+class CashBufferRequest(BaseModel):
+    portfolio_value: float
+    current_positions: Dict[str, float]
+    volatility_forecast: Optional[float] = None
+    stress_indicators: Optional[Dict[str, float]] = None
+
+@app.post("/calculate-cash-buffer")
+async def calculate_cash_buffer(request: CashBufferRequest):
+    """Calculate optimal cash buffer based on volatility forecasts and market conditions."""
+    try:
+        logger.info(f"Calculating cash buffer for portfolio value: ${request.portfolio_value:,.0f}")
+        
+        result = await liquidity_management_service.calculate_optimal_cash_buffer(
+            portfolio_value=request.portfolio_value,
+            current_positions=request.current_positions,
+            volatility_forecast=request.volatility_forecast,
+            stress_indicators=request.stress_indicators
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"Cash buffer calculation failed: {result['error']}")
+        
+        logger.info("Cash buffer calculation completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error calculating cash buffer: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to calculate cash buffer: {str(e)}")
+
+class RebalancingFrequencyRequest(BaseModel):
+    current_positions: Dict[str, float]
+    market_volatility: Optional[float] = None
+    liquidity_constraints: Optional[Dict[str, float]] = None
+
+@app.post("/determine-rebalancing-frequency")
+async def determine_rebalancing_frequency(request: RebalancingFrequencyRequest):
+    """Determine optimal rebalancing frequency based on market conditions."""
+    try:
+        logger.info("Determining optimal rebalancing frequency")
+        
+        result = await liquidity_management_service.determine_rebalancing_frequency(
+            current_positions=request.current_positions,
+            market_volatility=request.market_volatility,
+            liquidity_constraints=request.liquidity_constraints
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"Frequency determination failed: {result['error']}")
+        
+        logger.info("Rebalancing frequency determination completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error determining rebalancing frequency: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to determine rebalancing frequency: {str(e)}")
+
+class LiquidityScoringRequest(BaseModel):
+    symbols: List[str]
+    position_sizes: Optional[Dict[str, float]] = None
+    time_horizon: Optional[int] = None
+
+@app.post("/score-asset-liquidity")
+async def score_asset_liquidity(request: LiquidityScoringRequest):
+    """Score asset liquidity to avoid illiquid assets during market stress."""
+    try:
+        logger.info(f"Scoring liquidity for {len(request.symbols)} assets")
+        
+        result = await liquidity_management_service.score_asset_liquidity(
+            symbols=request.symbols,
+            position_sizes=request.position_sizes,
+            time_horizon=request.time_horizon
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"Liquidity scoring failed: {result['error']}")
+        
+        logger.info("Asset liquidity scoring completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error scoring asset liquidity: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to score asset liquidity: {str(e)}")
+
+class LiquidityAwareAllocationRequest(BaseModel):
+    target_allocation: Dict[str, float]
+    market_condition: Optional[str] = None
+    liquidity_requirements: Optional[Dict[str, Any]] = None
+
+@app.post("/liquidity-aware-allocation")
+async def generate_liquidity_aware_allocation(request: LiquidityAwareAllocationRequest):
+    """Generate allocation that considers liquidity constraints."""
+    try:
+        logger.info("Generating liquidity-aware allocation")
+        
+        # Convert market condition string to enum if provided
+        market_condition = None
+        if request.market_condition:
+            try:
+                market_condition = MarketCondition(request.market_condition)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid market condition: {request.market_condition}. Valid conditions: {list(MarketCondition)}"
+                )
+        
+        result = await liquidity_management_service.generate_liquidity_aware_allocation(
+            target_allocation=request.target_allocation,
+            market_condition=market_condition,
+            liquidity_requirements=request.liquidity_requirements
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"Liquidity-aware allocation failed: {result['error']}")
+        
+        logger.info("Liquidity-aware allocation generated successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error generating liquidity-aware allocation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate liquidity-aware allocation: {str(e)}")
+
+# Tax Efficiency Endpoints
+
+class TaxLossHarvestingRequest(BaseModel):
+    portfolio_positions: Dict[str, Dict[str, Any]]  # symbol -> {quantity, current_price, cost_basis}
+    account_type: str = "taxable"
+    min_loss_threshold: float = 1000.0
+    min_loss_percentage: float = 0.05
+
+@app.post("/tax-loss-harvesting")
+async def identify_tax_loss_harvesting(request: TaxLossHarvestingRequest):
+    """Identify tax-loss harvesting opportunities."""
+    try:
+        logger.info("Identifying tax-loss harvesting opportunities")
+        
+        # Convert account type string to enum
+        try:
+            account_type = AccountType(request.account_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid account type: {request.account_type}. Valid types: {list(AccountType)}"
+            )
+        
+        result = await tax_efficiency_service.identify_tax_loss_harvesting_opportunities(
+            portfolio_positions=request.portfolio_positions,
+            account_type=account_type,
+            min_loss_threshold=request.min_loss_threshold,
+            min_loss_percentage=request.min_loss_percentage
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"Tax-loss harvesting analysis failed: {result['error']}")
+        
+        logger.info("Tax-loss harvesting analysis completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in tax-loss harvesting analysis: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to analyze tax-loss harvesting: {str(e)}")
+
+class AssetLocationRequest(BaseModel):
+    target_allocation: Dict[str, float]
+    available_accounts: Dict[str, float]  # account_type -> available_capacity
+    current_positions: Optional[Dict[str, Dict[str, float]]] = None  # account_type -> {symbol: allocation}
+
+@app.post("/optimize-asset-location")
+async def optimize_asset_location(request: AssetLocationRequest):
+    """Optimize asset location across account types for tax efficiency."""
+    try:
+        logger.info("Optimizing asset location for tax efficiency")
+        
+        # Convert account type strings to enums
+        available_accounts = {}
+        for account_str, capacity in request.available_accounts.items():
+            try:
+                account_type = AccountType(account_str)
+                available_accounts[account_type] = capacity
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid account type: {account_str}. Valid types: {list(AccountType)}"
+                )
+        
+        # Convert current positions if provided
+        current_positions = None
+        if request.current_positions:
+            current_positions = {}
+            for account_str, positions in request.current_positions.items():
+                try:
+                    account_type = AccountType(account_str)
+                    current_positions[account_type] = positions
+                except ValueError:
+                    logger.warning(f"Invalid account type in current positions: {account_str}")
+        
+        result = await tax_efficiency_service.optimize_asset_location(
+            target_allocation=request.target_allocation,
+            available_accounts=available_accounts,
+            current_positions=current_positions
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"Asset location optimization failed: {result['error']}")
+        
+        logger.info("Asset location optimization completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error optimizing asset location: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to optimize asset location: {str(e)}")
+
+class TaxAwareRebalancingRequest(BaseModel):
+    current_positions: Dict[str, Dict[str, float]]  # account_type -> {symbol: quantity}
+    target_allocation: Dict[str, float]
+    current_prices: Dict[str, float]
+    cost_basis_data: Dict[str, Dict[str, Any]]  # symbol -> cost basis info
+    max_tax_impact: float = 0.02
+
+@app.post("/tax-aware-rebalancing")
+async def plan_tax_aware_rebalancing(request: TaxAwareRebalancingRequest):
+    """Plan tax-aware rebalancing that considers tax implications."""
+    try:
+        logger.info("Planning tax-aware rebalancing")
+        
+        # Convert account type strings to enums
+        current_positions = {}
+        for account_str, positions in request.current_positions.items():
+            try:
+                account_type = AccountType(account_str)
+                current_positions[account_type] = positions
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid account type: {account_str}. Valid types: {list(AccountType)}"
+                )
+        
+        result = await tax_efficiency_service.plan_tax_aware_rebalancing(
+            current_positions=current_positions,
+            target_allocation=request.target_allocation,
+            current_prices=request.current_prices,
+            cost_basis_data=request.cost_basis_data,
+            max_tax_impact=request.max_tax_impact
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"Tax-aware rebalancing failed: {result['error']}")
+        
+        logger.info("Tax-aware rebalancing plan completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error planning tax-aware rebalancing: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to plan tax-aware rebalancing: {str(e)}")
+
+class TaxAlphaRequest(BaseModel):
+    portfolio_performance: Dict[str, Any]
+    tax_management_actions: List[Dict[str, Any]]
+    benchmark_tax_drag: float = 0.015
+
+@app.post("/calculate-tax-alpha")
+async def calculate_tax_alpha(request: TaxAlphaRequest):
+    """Calculate tax alpha - the value added through tax management."""
+    try:
+        logger.info("Calculating tax alpha")
+        
+        result = await tax_efficiency_service.calculate_tax_alpha(
+            portfolio_performance=request.portfolio_performance,
+            tax_management_actions=request.tax_management_actions,
+            benchmark_tax_drag=request.benchmark_tax_drag
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"Tax alpha calculation failed: {result['error']}")
+        
+        logger.info("Tax alpha calculation completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error calculating tax alpha: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to calculate tax alpha: {str(e)}")
+
+# Comprehensive Portfolio Management Endpoint
+
+class ComprehensivePortfolioRequest(BaseModel):
+    tickers: List[str]
+    base_allocation: Dict[str, float]
+    risk_tolerance: str = "medium"
+    optimization_method: str = "black_litterman"
+    portfolio_value: float = 100000
+    peak_value: float = 100000
+    available_accounts: Optional[Dict[str, float]] = None
+    current_positions: Optional[Dict[str, Dict[str, float]]] = None
+    views: Optional[Dict[str, float]] = None
+    factor_constraints: Optional[Dict[str, List[float]]] = None
+    enable_tax_optimization: bool = False
+    enable_liquidity_management: bool = True
+    enable_risk_management: bool = True
+
+@app.post("/comprehensive-portfolio-management")
+async def comprehensive_portfolio_management(request: ComprehensivePortfolioRequest):
+    """Complete portfolio management with optimization, risk controls, liquidity management, and tax efficiency."""
+    try:
+        logger.info(f"Running comprehensive portfolio management for {len(request.tickers)} assets")
+        
+        # Step 1: Portfolio Optimization
+        try:
+            optimization_method = OptimizationMethod(request.optimization_method)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid optimization method: {request.optimization_method}"
+            )
+        
+        optimization_result = await advanced_optimization_service.optimize_portfolio_advanced(
+            tickers=request.tickers,
+            method=optimization_method,
+            lookback_days=63,
+            risk_tolerance=request.risk_tolerance,
+            views=request.views,
+            factor_constraints=None  # Handle factor constraints conversion if needed
+        )
+        
+        if "error" in optimization_result:
+            raise HTTPException(status_code=500, detail=f"Optimization failed: {optimization_result['error']}")
+        
+        current_weights = optimization_result.get("weights", {})
+        
+        # Step 2: Risk Management (if enabled)
+        risk_management_result = {}
+        if request.enable_risk_management:
+            risk_management_result = await risk_management_service.comprehensive_risk_management(
+                portfolio_weights=current_weights,
+                tickers=request.tickers,
+                portfolio_value=request.portfolio_value,
+                peak_value=request.peak_value,
+                target_vol=0.15,
+                hedge_budget=0.05,
+                lookback_days=63
+            )
+            
+            if "error" not in risk_management_result:
+                current_weights = risk_management_result.get("final_weights", current_weights)
+        
+        # Step 3: Liquidity Management (if enabled)
+        liquidity_result = {}
+        if request.enable_liquidity_management:
+            liquidity_result = await liquidity_management_service.generate_liquidity_aware_allocation(
+                target_allocation=current_weights,
+                market_condition=None,
+                liquidity_requirements=None
+            )
+            
+            if "error" not in liquidity_result:
+                current_weights = liquidity_result.get("liquidity_adjusted_allocation", current_weights)
+        
+        # Step 4: Tax Optimization (if enabled and accounts provided)
+        tax_optimization_result = {}
+        if request.enable_tax_optimization and request.available_accounts:
+            # Convert account strings to enums
+            available_accounts = {}
+            for account_str, capacity in request.available_accounts.items():
+                try:
+                    account_type = AccountType(account_str)
+                    available_accounts[account_type] = capacity
+                except ValueError:
+                    logger.warning(f"Invalid account type: {account_str}")
+            
+            if available_accounts:
+                tax_optimization_result = await tax_efficiency_service.optimize_asset_location(
+                    target_allocation=current_weights,
+                    available_accounts=available_accounts,
+                    current_positions=None
+                )
+        
+        # Step 5: Calculate comprehensive metrics
+        final_allocation = current_weights
+        
+        # Calculate allocation changes
+        allocation_changes = {}
+        for symbol in set(list(request.base_allocation.keys()) + list(final_allocation.keys())):
+            original = request.base_allocation.get(symbol, 0)
+            final = final_allocation.get(symbol, 0)
+            if abs(final - original) > 0.001:
+                allocation_changes[symbol] = {
+                    "original": original,
+                    "final": final,
+                    "change": final - original,
+                    "change_pct": (final - original) / original if original > 0 else float('inf')
+                }
+        
+        # Generate comprehensive summary
+        summary = {
+            "optimization_method": request.optimization_method,
+            "risk_management_enabled": request.enable_risk_management,
+            "liquidity_management_enabled": request.enable_liquidity_management,
+            "tax_optimization_enabled": request.enable_tax_optimization,
+            "total_adjustments": len(allocation_changes),
+            "major_changes": len([c for c in allocation_changes.values() if abs(c["change"]) > 0.05]),
+            "portfolio_value": request.portfolio_value
+        }
+        
+        logger.info("Comprehensive portfolio management completed successfully")
+        
+        return {
+            "final_allocation": final_allocation,
+            "original_allocation": request.base_allocation,
+            "allocation_changes": allocation_changes,
+            "optimization_result": optimization_result,
+            "risk_management": risk_management_result,
+            "liquidity_management": liquidity_result,
+            "tax_optimization": tax_optimization_result,
+            "summary": summary,
+            "recommendations": [
+                "Portfolio optimized using " + request.optimization_method,
+                f"Risk management {'applied' if request.enable_risk_management else 'disabled'}",
+                f"Liquidity constraints {'considered' if request.enable_liquidity_management else 'ignored'}",
+                f"Tax optimization {'applied' if request.enable_tax_optimization else 'disabled'}"
+            ],
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in comprehensive portfolio management: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to complete comprehensive portfolio management: {str(e)}"
+        )
+
+# ML Intelligence Endpoints
+
+class MLTrainingRequest(BaseModel):
+    symbols: List[str]
+    horizons: Optional[List[str]] = None
+    model_types: Optional[List[str]] = None
+    lookback_days: int = 252
+    retrain: bool = False
+
+@app.post("/ml/train-models")
+async def train_ml_models(request: MLTrainingRequest):
+    """Train ML models for price prediction."""
+    if not ML_ENABLED:
+        raise HTTPException(status_code=503, detail="ML Intelligence service not available")
+    
+    try:
+        logger.info(f"Training ML models for {len(request.symbols)} symbols")
+        
+        # Convert string enums to proper enums
+        horizons = None
+        if request.horizons:
+            try:
+                horizons = [PredictionHorizon(h) for h in request.horizons]
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid horizon: {str(e)}")
+        
+        model_types = None
+        if request.model_types:
+            try:
+                model_types = [ModelType(m) for m in request.model_types]
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid model type: {str(e)}")
+        
+        result = await ml_intelligence_service.train_price_prediction_models(
+            symbols=request.symbols,
+            horizons=horizons,
+            model_types=model_types,
+            lookback_days=request.lookback_days,
+            retrain=request.retrain
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"ML training failed: {result['error']}")
+        
+        logger.info("ML model training completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error training ML models: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to train ML models: {str(e)}")
+
+class MLPredictionRequest(BaseModel):
+    symbols: List[str]
+    horizons: Optional[List[str]] = None
+    include_confidence: bool = True
+
+@app.post("/ml/predict-movements")
+async def predict_price_movements(request: MLPredictionRequest):
+    """Predict short-term price movements using trained ML models."""
+    if not ML_ENABLED:
+        raise HTTPException(status_code=503, detail="ML Intelligence service not available")
+    
+    try:
+        logger.info(f"Generating ML predictions for {len(request.symbols)} symbols")
+        
+        # Convert string enums to proper enums
+        horizons = None
+        if request.horizons:
+            try:
+                horizons = [PredictionHorizon(h) for h in request.horizons]
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid horizon: {str(e)}")
+        
+        result = await ml_intelligence_service.predict_price_movements(
+            symbols=request.symbols,
+            horizons=horizons,
+            include_confidence=request.include_confidence
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"ML prediction failed: {result['error']}")
+        
+        logger.info("ML price predictions completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error predicting price movements: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to predict price movements: {str(e)}")
+
+class MarketRegimeRequest(BaseModel):
+    lookback_days: int = 252
+    retrain_model: bool = False
+
+@app.post("/ml/identify-regimes")
+async def identify_market_regimes(request: MarketRegimeRequest):
+    """Use clustering algorithms to identify market regimes."""
+    if not ML_ENABLED:
+        raise HTTPException(status_code=503, detail="ML Intelligence service not available")
+    
+    try:
+        logger.info("Identifying market regimes using ML clustering")
+        
+        result = await ml_intelligence_service.identify_market_regimes(
+            lookback_days=request.lookback_days,
+            retrain_model=request.retrain_model
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"Market regime analysis failed: {result['error']}")
+        
+        logger.info("Market regime identification completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error identifying market regimes: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to identify market regimes: {str(e)}")
+
+class RLOptimizationRequest(BaseModel):
+    portfolio_weights: Dict[str, float]
+    market_state: Dict[str, Any]
+    learning_mode: bool = False
+    episodes: int = 1000
+
+@app.post("/ml/rl-optimization")
+async def reinforcement_learning_optimization(request: RLOptimizationRequest):
+    """Use reinforcement learning for dynamic portfolio optimization."""
+    if not ML_ENABLED:
+        raise HTTPException(status_code=503, detail="ML Intelligence service not available")
+    
+    try:
+        logger.info("Running reinforcement learning portfolio optimization")
+        
+        result = await ml_intelligence_service.reinforcement_learning_optimization(
+            portfolio_weights=request.portfolio_weights,
+            market_state=request.market_state,
+            learning_mode=request.learning_mode,
+            episodes=request.episodes
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"RL optimization failed: {result['error']}")
+        
+        logger.info("RL optimization completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in RL optimization: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to run RL optimization: {str(e)}")
+
+class EnsembleMLRequest(BaseModel):
+    symbols: List[str]
+    prediction_horizon: str = "5_days"
+    include_regime_analysis: bool = True
+    include_rl_insights: bool = False
+
+@app.post("/ml/ensemble-prediction")
+async def ensemble_ml_prediction(request: EnsembleMLRequest):
+    """Comprehensive ML prediction combining multiple approaches."""
+    if not ML_ENABLED:
+        raise HTTPException(status_code=503, detail="ML Intelligence service not available")
+    
+    try:
+        logger.info(f"Running ensemble ML prediction for {len(request.symbols)} symbols")
+        
+        # Convert prediction horizon
+        try:
+            prediction_horizon = PredictionHorizon(request.prediction_horizon)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid prediction horizon: {request.prediction_horizon}")
+        
+        result = await ml_intelligence_service.ensemble_ml_prediction(
+            symbols=request.symbols,
+            prediction_horizon=prediction_horizon,
+            include_regime_analysis=request.include_regime_analysis,
+            include_rl_insights=request.include_rl_insights
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=f"Ensemble ML prediction failed: {result['error']}")
+        
+        logger.info("Ensemble ML prediction completed successfully")
+        return result
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in ensemble ML prediction: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to run ensemble ML prediction: {str(e)}")
+
+@app.get("/ml/model-status")
+async def get_ml_model_status():
+    """Get status of all trained ML models."""
+    if not ML_ENABLED:
+        raise HTTPException(status_code=503, detail="ML Intelligence service not available")
+    
+    try:
+        status = ml_intelligence_service.get_model_status()
+        return status
+    except Exception as e:
+        logger.error(f"Error getting ML model status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get model status: {str(e)}")
+
+# AI-Powered Comprehensive Portfolio Management
+
+class AIPortfolioRequest(BaseModel):
+    tickers: List[str]
+    base_allocation: Dict[str, float]
+    risk_tolerance: str = "medium"
+    portfolio_value: float = 100000
+    peak_value: float = 100000
+    enable_ml_predictions: bool = True
+    enable_regime_analysis: bool = True
+    enable_rl_optimization: bool = False
+    prediction_horizon: str = "5_days"
+    train_models: bool = False
+    available_accounts: Optional[Dict[str, float]] = None
+    enable_tax_optimization: bool = False
+    enable_liquidity_management: bool = True
+    enable_risk_management: bool = True
+
+@app.post("/ai-portfolio-management")
+async def ai_powered_portfolio_management(request: AIPortfolioRequest):
+    """Complete AI-powered portfolio management with ML intelligence."""
+    try:
+        logger.info(f"Running AI-powered portfolio management for {len(request.tickers)} assets")
+        
+        # Step 1: ML Model Training (if requested)
+        ml_training_result = {}
+        if ML_ENABLED and request.train_models:
+            logger.info("Training ML models...")
+            ml_training_result = await ml_intelligence_service.train_price_prediction_models(
+                symbols=request.tickers,
+                horizons=[PredictionHorizon(request.prediction_horizon)],
+                retrain=True
+            )
+        
+        # Step 2: ML Predictions and Analysis
+        ml_insights = {}
+        if ML_ENABLED and request.enable_ml_predictions:
+            logger.info("Generating ML predictions...")
+            try:
+                prediction_horizon = PredictionHorizon(request.prediction_horizon)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid prediction horizon: {request.prediction_horizon}")
+            
+            ml_insights = await ml_intelligence_service.ensemble_ml_prediction(
+                symbols=request.tickers,
+                prediction_horizon=prediction_horizon,
+                include_regime_analysis=request.enable_regime_analysis,
+                include_rl_insights=request.enable_rl_optimization
+            )
+            
+            # Adjust allocation based on ML insights
+            if "final_recommendations" in ml_insights:
+                individual_recs = ml_insights["final_recommendations"].get("individual_recommendations", {})
+                
+                # Apply ML-driven allocation adjustments
+                ml_adjusted_allocation = request.base_allocation.copy()
+                for symbol, rec in individual_recs.items():
+                    if symbol in ml_adjusted_allocation:
+                        confidence = rec.get("confidence", 0.5)
+                        expected_return = rec.get("expected_return", 0.0)
+                        
+                        # Adjust allocation based on ML signal strength
+                        if rec["action"] == "buy" and confidence > 0.7:
+                            ml_adjusted_allocation[symbol] *= (1 + expected_return * confidence * 0.2)
+                        elif rec["action"] == "sell" and confidence > 0.7:
+                            ml_adjusted_allocation[symbol] *= (1 - abs(expected_return) * confidence * 0.2)
+                
+                # Normalize weights
+                total_weight = sum(ml_adjusted_allocation.values())
+                if total_weight > 0:
+                    ml_adjusted_allocation = {k: v/total_weight for k, v in ml_adjusted_allocation.items()}
+                
+                # Use ML-adjusted allocation for subsequent steps
+                current_allocation = ml_adjusted_allocation
+            else:
+                current_allocation = request.base_allocation
+        else:
+            current_allocation = request.base_allocation
+        
+        # Step 3: Advanced Portfolio Optimization
+        logger.info("Running portfolio optimization...")
+        try:
+            optimization_method = OptimizationMethod.BLACK_LITTERMAN
+        except ValueError:
+            optimization_method = OptimizationMethod.MAX_SHARPE
+        
+        optimization_result = await advanced_optimization_service.optimize_portfolio_advanced(
+            tickers=request.tickers,
+            method=optimization_method,
+            lookback_days=63,
+            risk_tolerance=request.risk_tolerance,
+            views=None
+        )
+        
+        if "error" not in optimization_result:
+            current_weights = optimization_result.get("weights", current_allocation)
+        else:
+            current_weights = current_allocation
+        
+        # Step 4: Risk Management (if enabled)
+        risk_management_result = {}
+        if request.enable_risk_management:
+            logger.info("Applying risk management...")
+            risk_management_result = await risk_management_service.comprehensive_risk_management(
+                portfolio_weights=current_weights,
+                tickers=request.tickers,
+                portfolio_value=request.portfolio_value,
+                peak_value=request.peak_value,
+                target_vol=0.15,
+                hedge_budget=0.05,
+                lookback_days=63
+            )
+            
+            if "error" not in risk_management_result:
+                current_weights = risk_management_result.get("final_weights", current_weights)
+        
+        # Step 5: Liquidity Management (if enabled)
+        liquidity_result = {}
+        if request.enable_liquidity_management:
+            logger.info("Applying liquidity management...")
+            liquidity_result = await liquidity_management_service.generate_liquidity_aware_allocation(
+                target_allocation=current_weights,
+                market_condition=None,
+                liquidity_requirements=None
+            )
+            
+            if "error" not in liquidity_result:
+                current_weights = liquidity_result.get("liquidity_adjusted_allocation", current_weights)
+        
+        # Step 6: Tax Optimization (if enabled and accounts provided)
+        tax_optimization_result = {}
+        if request.enable_tax_optimization and request.available_accounts:
+            logger.info("Applying tax optimization...")
+            # Convert account strings to enums
+            available_accounts = {}
+            for account_str, capacity in request.available_accounts.items():
+                try:
+                    account_type = AccountType(account_str)
+                    available_accounts[account_type] = capacity
+                except ValueError:
+                    logger.warning(f"Invalid account type: {account_str}")
+            
+            if available_accounts:
+                tax_optimization_result = await tax_efficiency_service.optimize_asset_location(
+                    target_allocation=current_weights,
+                    available_accounts=available_accounts,
+                    current_positions=None
+                )
+        
+        # Step 7: Generate Final Analysis and Recommendations
+        final_allocation = current_weights
+        
+        # Calculate allocation changes
+        allocation_changes = {}
+        for symbol in set(list(request.base_allocation.keys()) + list(final_allocation.keys())):
+            original = request.base_allocation.get(symbol, 0)
+            final = final_allocation.get(symbol, 0)
+            if abs(final - original) > 0.001:
+                allocation_changes[symbol] = {
+                    "original": original,
+                    "final": final,
+                    "change": final - original,
+                    "change_pct": (final - original) / original if original > 0 else float('inf')
+                }
+        
+        # Generate AI insights
+        ai_insights = {
+            "ml_model_confidence": ml_insights.get("portfolio_metrics", {}).get("average_confidence", 0.5) if ml_insights else 0.0,
+            "regime_analysis": ml_insights.get("component_analyses", {}).get("regime_analysis", {}) if ml_insights else {},
+            "optimization_improvement": optimization_result.get("metrics", {}).get("sharpe_ratio", 0) if optimization_result else 0,
+            "risk_adjustment": "applied" if request.enable_risk_management else "disabled",
+            "liquidity_optimization": "applied" if request.enable_liquidity_management else "disabled",
+            "tax_efficiency": "applied" if request.enable_tax_optimization else "disabled"
+        }
+        
+        # Generate comprehensive recommendations
+        recommendations = []
+        
+        if ml_insights:
+            portfolio_insights = ml_insights.get("portfolio_insights", {})
+            if portfolio_insights:
+                market_sentiment = portfolio_insights.get("market_sentiment", "neutral")
+                recommendations.append(f"ML analysis indicates {market_sentiment} market sentiment")
+                
+                avg_confidence = portfolio_insights.get("avg_confidence", 0.5)
+                if avg_confidence > 0.7:
+                    recommendations.append("High confidence in ML predictions - consider implementing recommendations")
+                elif avg_confidence < 0.4:
+                    recommendations.append("Low confidence in ML predictions - maintain conservative approach")
+        
+        if allocation_changes:
+            major_changes = [symbol for symbol, change in allocation_changes.items() if abs(change["change"]) > 0.05]
+            if major_changes:
+                recommendations.append(f"Major allocation changes recommended for: {', '.join(major_changes)}")
+        
+        # Performance projections
+        performance_projection = {
+            "expected_annual_return": sum(
+                final_allocation.get(symbol, 0) * ml_insights.get("final_recommendations", {}).get("individual_recommendations", {}).get(symbol, {}).get("expected_return", 0.08)
+                for symbol in request.tickers
+            ) if ml_insights else 0.08,
+            "projected_sharpe_ratio": optimization_result.get("metrics", {}).get("sharpe_ratio", 1.0) if optimization_result else 1.0,
+            "risk_score": "moderate",
+            "ml_confidence_score": ai_insights["ml_model_confidence"]
+        }
+        
+        logger.info("AI-powered portfolio management completed successfully")
+        
+        return {
+            "ai_insights": ai_insights,
+            "final_allocation": final_allocation,
+            "original_allocation": request.base_allocation,
+            "allocation_changes": allocation_changes,
+            "ml_training_result": ml_training_result,
+            "ml_insights": ml_insights,
+            "optimization_result": optimization_result,
+            "risk_management": risk_management_result,
+            "liquidity_management": liquidity_result,
+            "tax_optimization": tax_optimization_result,
+            "performance_projection": performance_projection,
+            "recommendations": recommendations,
+            "processing_summary": {
+                "ml_enabled": ML_ENABLED,
+                "models_trained": request.train_models,
+                "ml_predictions_generated": request.enable_ml_predictions,
+                "regime_analysis_performed": request.enable_regime_analysis,
+                "rl_optimization_used": request.enable_rl_optimization,
+                "optimization_applied": True,
+                "risk_management_applied": request.enable_risk_management,
+                "liquidity_management_applied": request.enable_liquidity_management,
+                "tax_optimization_applied": request.enable_tax_optimization
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in AI-powered portfolio management: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to complete AI-powered portfolio management: {str(e)}"
+        )
+
+@app.get("/portfolio-management-capabilities")
+async def get_portfolio_management_capabilities():
+    """Get information about all available portfolio management features."""
+    capabilities = {
+        "optimization_methods": {
+            method.value: f"Advanced {method.value.replace('_', ' ').title()} optimization"
+            for method in OptimizationMethod
+        },
+        "risk_management": {
+            "volatility_position_sizing": "Adjusts position sizes based on asset volatility",
+            "tail_risk_hedging": "Implements hedging during high-risk periods",
+            "drawdown_controls": "Reduces exposure after significant losses",
+            "comprehensive_risk_management": "Integrates all risk management strategies"
+        },
+        "liquidity_management": {
+            "cash_buffer_optimization": "Dynamic cash allocation based on market conditions",
+            "rebalancing_frequency": "Adaptive rebalancing based on market volatility",
+            "liquidity_scoring": "Asset liquidity assessment for stress scenarios",
+            "liquidity_aware_allocation": "Portfolio allocation considering liquidity constraints"
+        },
+        "tax_efficiency": {
+            "tax_loss_harvesting": "Systematic realization of losses for tax benefits",
+            "asset_location_optimization": "Optimal placement of assets across account types",
+            "tax_aware_rebalancing": "Rebalancing strategies that minimize tax impact",
+            "tax_alpha_calculation": "Measurement of value added through tax management"
+        },
+        "account_types": [account.value for account in AccountType],
+        "market_conditions": [condition.value for condition in MarketCondition],
+        "rebalancing_frequencies": [freq.value for freq in RebalanceFrequency],
+        "comprehensive_management": {
+            "description": "Integrated portfolio management combining all features",
+            "capabilities": [
+                "Multi-objective optimization",
+                "Dynamic risk management",
+                "Liquidity-aware allocation",
+                "Tax-efficient implementation"
+            ]
+        }
+    }
+    
+    # Add ML capabilities if available
+    if ML_ENABLED:
+        capabilities["ml_intelligence"] = {
+            "price_prediction": "ML models for short-term price movement forecasting",
+            "regime_identification": "Clustering algorithms for market regime detection",
+            "reinforcement_learning": "RL-based dynamic portfolio optimization",
+            "ensemble_methods": "Combined ML approaches for robust predictions",
+            "prediction_horizons": [horizon.value for horizon in PredictionHorizon],
+            "model_types": [model.value for model in ModelType],
+            "market_regimes": [regime.value for regime in MLMarketRegime]
+        }
+        capabilities["ai_powered_management"] = {
+            "description": "Complete AI-driven portfolio management system",
+            "features": [
+                "ML-based price predictions",
+                "Market regime analysis",
+                "Reinforcement learning optimization",
+                "Multi-objective optimization",
+                "Dynamic risk management",
+                "Liquidity-aware allocation",
+                "Tax-efficient implementation"
+            ]
+        }
+    else:
+        capabilities["ml_intelligence"] = {
+            "status": "Not available - ML libraries not installed",
+            "install_requirements": ["scikit-learn", "tensorflow", "xgboost", "lightgbm"]
+        }
+    
+    return capabilities
+
 if __name__ == "__main__":
     import uvicorn
 
